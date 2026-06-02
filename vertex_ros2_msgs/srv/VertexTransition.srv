@@ -1,0 +1,9 @@
+# Lifecycle control plane for the vertex_node managed-node state machine
+# (design §8.4 fallback #2, used because rclrs has no LifecycleNode yet).
+#
+# `transition` is one of: configure | activate | deactivate | cleanup | shutdown
+string transition
+---
+bool   success
+string state      # resulting primary lifecycle state (unconfigured/inactive/active/finalized)
+string message    # empty on success, else the reason the transition was rejected
