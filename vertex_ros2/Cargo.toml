@@ -1,0 +1,30 @@
+[package]
+name = "vertex_ros2"
+version = "0.1.0"
+edition = "2021"
+description = "ROS 2 node (vertex_node) exposing Tashi Vertex consensus on /vertex/tx, /vertex/event, /vertex/sync_point, /vertex/status and /diagnostics."
+license = "Apache-2.0"
+
+# Built by colcon (ament_cargo) inside a ROS 2 workspace. `rclrs` and the
+# generated message crates are provided by colcon-ros-cargo from the workspace
+# install space; a bare `cargo build` outside colcon will not resolve them.
+# All ROS-independent logic lives in `vertex_core`, which IS plain-`cargo`
+# buildable and is where the test suite runs.
+
+[[bin]]
+name = "vertex_node"
+path = "src/main.rs"
+
+[dependencies]
+vertex_core = { path = "../vertex_core" }
+
+# Bridges the engine thread's tokio mpsc receivers onto ROS publishers.
+tokio = { version = "1", features = ["sync", "rt"] }
+
+# Provided by the colcon/ROS 2 workspace (ros2-rust). Versions track the target
+# distribution (Jazzy baseline); colcon-ros-cargo resolves them.
+rclrs = "*"
+builtin_interfaces = "*"
+diagnostic_msgs = "*"
+std_msgs = "*"
+vertex_ros2_msgs = "*"

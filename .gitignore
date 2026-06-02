@@ -1,0 +1,13 @@
+# Rust
+target/
+**/*.rs.bk
+# Cargo.lock IS committed: this workspace ships a deployable node (vertex_node),
+# so locked, reproducible builds are preferred over floating versions.
+
+# colcon / ROS 2
+build/
+install/
+log/
+
+# OS
+.DS_Store

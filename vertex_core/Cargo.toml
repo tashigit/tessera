@@ -1,0 +1,17 @@
+[package]
+name = "vertex_core"
+version = "0.1.0"
+edition = "2021"
+description = "ROS-agnostic core of the Vertex/ROS 2 integration: lifecycle, the Tokio<->channel bridge, the engine task, and Vertex->message conversion. Verified by `cargo test` with no ROS install."
+license = "Apache-2.0"
+
+[dependencies]
+tashi-vertex = { path = "../../tashi-vertex-rs" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+arc-swap = "1"
+thiserror = "2"
+
+[dev-dependencies]
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }

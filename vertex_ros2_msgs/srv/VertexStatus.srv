@@ -1,0 +1,11 @@
+# On-demand snapshot of the vertex_node's state. Callable in any lifecycle
+# state. The request is empty.
+---
+bool      running
+string    bind_address
+uint32    peer_count
+uint64    tx_submitted_total
+uint64    tx_rejected_total
+uint64    events_published_total
+int32     last_error_code     # tashi_vertex::Error mapped to i32 (0 if OK)
+string    last_error_message
