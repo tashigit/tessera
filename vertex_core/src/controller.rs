@@ -14,6 +14,7 @@
 
 use std::sync::mpsc as std_mpsc;
 use std::thread;
+use std::time::Duration;
 
 use tashi_vertex::{Context, Engine, KeyPublic, KeySecret, PeerCapabilities, Peers, Socket};
 use thiserror::Error;
@@ -105,11 +106,19 @@ async fn build_engine(params: &EngineParams) -> Result<(Engine, Context), Contro
     Ok((engine, ctx))
 }
 
+/// How long `deactivate`/`shutdown` waits for the engine thread to wind down
+/// before abandoning it (see [`Controller::stop_active`]).
+const ENGINE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// State for an active session: the running engine thread and the inbound sender.
 struct Active {
     cancel: CancellationToken,
     thread: thread::JoinHandle<()>,
     tx_in: TxSender,
+    /// Closed (disconnected) by the engine thread when it returns. Lets
+    /// `stop_active` wait for completion with a timeout — `JoinHandle` has no
+    /// timed join.
+    done: std_mpsc::Receiver<()>,
 }
 
 /// The lifecycle controller. Not tied to ROS — the `ros` layer holds one of
@@ -179,10 +188,15 @@ impl Controller {
         // The engine thread reports startup success/failure before entering the
         // receive loop, so activation fails synchronously if bind/start fails.
         let (startup_tx, startup_rx) = std_mpsc::sync_channel::<Result<(), String>>(1);
+        // `done_tx` lives for the thread's whole lifetime; when the thread
+        // returns it drops, disconnecting `done` so `stop_active` can detect
+        // completion with a timeout.
+        let (done_tx, done_rx) = std_mpsc::channel::<()>();
 
         let thread = thread::Builder::new()
             .name("vertex-engine".into())
             .spawn(move || {
+                let _done_tx = done_tx; // held until the thread exits
                 let rt = match tokio::runtime::Builder::new_current_thread()
                     .enable_time()
                     .build()
@@ -240,6 +254,7 @@ impl Controller {
             cancel,
             thread,
             tx_in: tx_in_tx,
+            done: done_rx,
         });
         self.status.set_running(true, &bind_address, peer_count);
         self.state = next;
@@ -294,7 +309,30 @@ impl Controller {
         if let Some(active) = self.active.take() {
             active.cancel.cancel();
             drop(active.tx_in); // close inbound so the task observes EOF too
-            let _ = active.thread.join();
+
+            // Wait for the engine thread to wind down — but only up to a bound.
+            // `recv_message` is not cancellable and there is no `Engine::stop`
+            // (§9.3), so an engine that has stalled (e.g. consensus lost quorum
+            // and it emits no more messages) can never observe the stop flag and
+            // its thread will not return. Rather than hang `deactivate`/
+            // `shutdown` forever, we abandon such a thread; it is reaped at
+            // process exit. A healthy engine returns well within the timeout.
+            match active.done.recv_timeout(ENGINE_STOP_TIMEOUT) {
+                // Disconnected = the thread dropped its `done` sender, i.e. it
+                // returned. Join is then immediate.
+                Err(std_mpsc::RecvTimeoutError::Disconnected) | Ok(()) => {
+                    let _ = active.thread.join();
+                }
+                // Still running after the timeout: detach (do not join).
+                Err(std_mpsc::RecvTimeoutError::Timeout) => {
+                    self.status.update(|s| {
+                        s.last_error_message =
+                            "engine thread did not stop within timeout; detached \
+                             (no Engine::stop upstream, §9.3)"
+                                .to_string();
+                    });
+                }
+            }
         }
     }
 }

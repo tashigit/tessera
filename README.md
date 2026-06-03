@@ -45,20 +45,30 @@ tessera/
 
 **Verified here, no ROS 2 required** (`cd vertex_core && cargo test`):
 
-- The full engine path end-to-end against the **real `libtashi-vertex`**: a
-  single-peer session is started through the lifecycle controller, transactions
-  are submitted, and they round-trip on the event channel — every transaction
-  delivered exactly once (delivery integrity / no double-free, §7), counters
-  correct, then a clean `deactivate → cleanup → shutdown` (§7).
-- Lifecycle state-machine transitions and guards (§4.4).
-- Time conversion (§4.5), status snapshot/counters (§5.2), config & peer-spec
-  parsing, and every `Options` setter (§6).
+- **`multi_node`** — the headline guarantee (design G4 / §7): **three real
+  in-process Vertex engines** networked over localhost UDP, txs submitted from
+  every peer, and all three `/vertex/event` streams asserted **byte-for-byte
+  identical**. This is the consensus-ordering acceptance criterion the v0.1
+  single-node test could not prove.
+- **`single_node`** — full engine path against the **real `libtashi-vertex`**:
+  submit → round-trip on the event channel, every tx delivered exactly once
+  (delivery integrity / no double-free, §7), counters correct, clean teardown.
+- **`lifecycle_behavior`** — the event stream closes when the node leaves
+  `Active` (no publishes when not Active, §7); and a `deactivate → activate`
+  cycle on the same bind address succeeds without a process restart.
+- Lifecycle state-machine transitions/guards (§4.4), time conversion (§4.5),
+  status counters (§5.2), config & peer-spec parsing, every `Options` setter (§6).
 
 ```console
 $ cd vertex_core && cargo test
 test result: ok. 18 passed; 0 failed   # unit
-test result: ok. 1 passed; 0 failed    # single_node integration (real engine)
+test result: ok. 2 passed; 0 failed    # lifecycle_behavior
+test result: ok. 1 passed; 0 failed    # multi_node (3 real engines, byte-for-byte)
+test result: ok. 1 passed; 0 failed    # single_node (real engine round-trip)
 ```
+
+The **ROS-level** equivalents (3 `vertex_node` processes, no-publish-in-Inactive,
+10-min soak) live in `vertex_ros2/test/` as `launch_test`s for CI on Jazzy.
 
 **Requires a ROS 2 Jazzy workspace** (built by colcon, *not* by the local `cargo`):
 the `vertex_ros2` node crate (`rclrs` + generated messages). See
@@ -102,7 +112,12 @@ These can't be fully closed inside this repo; each is small (design §9).
    never drop an unsent buffer.
 3. **No `Engine::stop`** (§9.3) — teardown drops the `Context` on the engine thread
    after the recv loop exits; a `deactivate → activate` cycle re-creates the engine
-   from scratch.
+   from scratch (verified by `lifecycle_behavior`). Because `recv_message` can't be
+   cancelled, an engine that has *stalled* (lost quorum, no more messages) can never
+   observe the stop flag, so `deactivate`/`shutdown` waits a bounded
+   `ENGINE_STOP_TIMEOUT` (5 s) and then **detaches** the thread rather than hang
+   (reaped at process exit). A healthy engine stops well within the bound. A real
+   `Engine::stop` upstream would make this deterministic.
 4. **`SyncPoint` has no accessors** (§9.2) — `VertexSyncPoint.payload` is empty.
 5. **Event timestamp unit** (§9.5) — pinned to **nanoseconds** in
    `convert::nanos_to_time`, the single place to change if upstream differs.
