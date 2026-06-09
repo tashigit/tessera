@@ -54,6 +54,9 @@ tessera/
 - **`single_node`** — full engine path against the **real `libtashi-vertex`**:
   submit → round-trip on the event channel, every tx delivered exactly once
   (delivery integrity / no double-free, §7), counters correct, clean teardown.
+- **`tx_saturation`** — floods a deliberately tiny inbound channel with 10× its
+  capacity in a tight loop and asserts `tx_submitted_total + tx_rejected_total`
+  equals the number submitted (backpressure accounting is leak-free, §7).
 - **`lifecycle_behavior`** — the event stream closes when the node leaves
   `Active` (no publishes when not Active, §7); and a `deactivate → activate`
   cycle on the same bind address succeeds without a process restart.

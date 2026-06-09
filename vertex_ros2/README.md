@@ -19,16 +19,24 @@ outside colcon will not resolve `rclrs`/the generated message crates.
 
 ## Lifecycle (the rclrs gap, §8.4)
 
-`rclrs` (v0.7.0) ships no `LifecycleNode`. Rather than block v0.1, `vertex_node`
-runs the canonical managed-node state machine (`vertex_core::lifecycle`, the same
-one a real `LifecycleNode` would drive) and exposes it through the
-`/vertex/transition` service (verbs `configure`/`activate`/`deactivate`/`cleanup`/
-`shutdown`), publishing the primary state on the latched `/vertex/lifecycle/state`
-topic.
+`rclrs` ships no `LifecycleNode`. **Re-checked 2026-06-09** (TAS-76 scope item 2)
+against `ros2-rust/ros2_rust` `main` (post-v0.7.0): `rclrs/src` still has no
+`lifecycle`/`LifecycleNode` module — it provides nodes, services, parameters,
+timers, and (newly) actions, but no managed-node support. **Decision: keep the
+`/vertex/transition` service fallback** (§8.4 fallback #2); revisit when upstream
+lands lifecycle nodes.
+
+`vertex_node` therefore runs the canonical managed-node state machine
+(`vertex_core::lifecycle`, the same one a real `LifecycleNode` would drive) and
+exposes it through the `/vertex/transition` service (verbs `configure`/`activate`/
+`deactivate`/`cleanup`/`shutdown`), publishing the primary state on the latched
+`/vertex/lifecycle/state` topic.
 
 > This is a **sibling control plane**, not the `ros2 lifecycle` CLI. The deviation
 > is intentional and documented; migrating to a native `LifecycleNode` later is a
-> change localized to this crate (the engine path is unaffected).
+> change localized to this crate (the engine path is unaffected). When it lands
+> upstream, the migration is a dependency bump plus swapping the service handlers
+> for the native transition callbacks — the state machine is unchanged.
 
 ## Build
 

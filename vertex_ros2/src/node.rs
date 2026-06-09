@@ -13,10 +13,15 @@
 //!
 //! # Lifecycle (design §8.4 fallback #2)
 //!
-//! `rclrs` does not ship a `LifecycleNode` (v0.7.0). Rather than block v0.1 on
-//! upstream, we expose the managed-node state machine through a
-//! `/vertex/transition` service (verbs: `configure`/`activate`/`deactivate`/
-//! `cleanup`/`shutdown`) and publish the current primary state on a latched
+//! `rclrs` does not ship a `LifecycleNode`. Re-checked 2026-06-09 (TAS-76 scope
+//! item 2) against `ros2-rust/ros2_rust` `main` (post-v0.7.0): `rclrs/src` still
+//! has no `lifecycle`/`LifecycleNode` module — it carries nodes, services,
+//! parameters, timers, and (newly) actions, but no managed-node support.
+//! **Decision: keep the `/vertex/transition` service fallback.**
+//!
+//! So, rather than block on upstream, we expose the managed-node state machine
+//! through a `/vertex/transition` service (verbs: `configure`/`activate`/
+//! `deactivate`/`cleanup`/`shutdown`) and publish the current primary state on a latched
 //! `/vertex/lifecycle/state` topic. The state machine itself is
 //! [`vertex_core::lifecycle`], identical to what a real `LifecycleNode` would
 //! drive — so migrating to native lifecycle later is a localized change here,
