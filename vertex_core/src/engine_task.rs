@@ -126,10 +126,12 @@ async fn recv_loop(
                 }
                 status.record_event_published();
             }
-            Ok(Some(Message::SyncPoint(_sp))) => {
+            Ok(Some(Message::SyncPoint(sp))) => {
                 let record = SyncPointRecord {
                     observed_at: now_stamped(),
-                    payload: Vec::new(), // empty until §9.2 lands
+                    epoch_index: sp.epoch_index(),
+                    just_synced: sp.just_synced(),
+                    session_ended: sp.session_ended(),
                 };
                 // A slow sync-point consumer must not wedge consensus.
                 let _ = sync_out.try_send(record);

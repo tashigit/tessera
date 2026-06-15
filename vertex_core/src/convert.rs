@@ -89,11 +89,16 @@ impl EventRecord {
 
 /// An outbound sync point. Mirrors `VertexSyncPoint`.
 ///
-/// `payload` is empty until upstream exposes sync-point accessors (design §9.2).
+/// Carries the application-actionable fields of a consensus sync point: the
+/// epoch it begins (the cue to checkpoint state), whether the node just synced
+/// in, and whether the session ended. The richer membership/weight detail the
+/// engine tracks is intentionally not surfaced here (design §9.2).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SyncPointRecord {
     pub observed_at: StampedTime,
-    pub payload: Vec<u8>,
+    pub epoch_index: u64,
+    pub just_synced: bool,
+    pub session_ended: bool,
 }
 
 #[cfg(test)]

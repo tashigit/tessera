@@ -97,7 +97,9 @@ fn to_ros_event(rec: EventRecord) -> RosEvent {
 fn to_ros_sync_point(rec: SyncPointRecord) -> RosSyncPoint {
     RosSyncPoint {
         observed_at: to_ros_time(rec.observed_at),
-        payload: rec.payload.into(),
+        epoch_index: rec.epoch_index,
+        just_synced: rec.just_synced,
+        session_ended: rec.session_ended,
     }
 }
 
