@@ -168,6 +168,17 @@ fn three_peers_observe_identical_event_streams() {
     // for every observer — so the ordered prefixes must be byte-for-byte equal.
     let min_len = streams.iter().map(|s| s.len()).min().unwrap();
     assert!(min_len > 0, "no events collected");
+
+    // TAS-92 verification: with ≥3 peers the whitened signature is genuinely
+    // non-zero (the famous-witness XOR no longer cancels) and 64 bytes. Because
+    // it is event-intrinsic it must also be byte-identical across all peers —
+    // asserted by the full-record equality below.
+    assert!(
+        streams[0].iter().any(|ev| ev.whitened_signature.len() == 64
+            && ev.whitened_signature.iter().any(|&b| b != 0)),
+        "expected at least one event with a populated (non-zero, 64-byte) \
+         whitened_signature across a multi-peer session"
+    );
     for idx in 0..min_len {
         let e0 = &streams[0][idx];
         for (n, s) in streams.iter().enumerate().skip(1) {

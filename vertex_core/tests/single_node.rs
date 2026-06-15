@@ -67,6 +67,17 @@ fn submitted_transactions_round_trip_in_order() {
             }
             match timeout(remaining, events.recv()).await {
                 Ok(Some(ev)) => {
+                    // TAS-92 verification: accessing whitened_signature must
+                    // not segfault and must yield a valid 64-byte buffer. (Its
+                    // bytes are XOR-cancelled to zero in a solo session — the
+                    // non-zero, cross-peer-identical property is asserted in
+                    // multi_node.rs.)
+                    assert_eq!(
+                        ev.whitened_signature.len(),
+                        64,
+                        "whitened_signature must be 64 bytes, got {}",
+                        ev.whitened_signature.len()
+                    );
                     for tx in ev.transactions {
                         // Ignore any empty/non-test transactions defensively.
                         if tx.payload.starts_with(b"tx-") {
