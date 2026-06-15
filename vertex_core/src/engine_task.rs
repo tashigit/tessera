@@ -55,9 +55,9 @@ fn now_stamped() -> StampedTime {
 }
 
 impl EngineTask {
-    /// Drive the engine until cancellation. Consumes `self`; the `Engine` is
-    /// dropped on return (design §4.8: dropping the handle is today the only
-    /// teardown path — there is no `Engine::stop`, see §9.3). This future must be
+    /// Drive the engine until cancellation. Consumes `self`; on cancellation it
+    /// calls `Engine::stop` to wind the engine down, then drops the handle on
+    /// return (design §4.8). This future must be
     /// awaited via `block_on`/`run_until` on a current-thread runtime — it spawns
     /// `!Send` local tasks and must never itself be cancelled while a
     /// `recv_message` is in flight.
@@ -95,9 +95,15 @@ impl EngineTask {
                 // cancelling an in-flight recv.
                 cancel.cancelled().await;
                 stop.store(true, Ordering::Relaxed);
+                // Signal the engine to wind down (TAS-93 / §9.3). This makes an
+                // in-flight `recv_message` resolve to `None` even when the
+                // session has stalled and no heartbeat would wake the loop, so
+                // the recv loop is guaranteed to observe `stop` and exit. Without
+                // it a stalled engine could block `recv_message` forever.
+                let _ = engine.stop();
 
                 let _ = send.await; // returns promptly: it observes `cancel`
-                let _ = recv.await; // returns at the next message (≤ heartbeat)
+                let _ = recv.await; // returns once the engine winds down
             })
             .await;
         // `engine` (Rc) drops here, then the caller drops the Context.
