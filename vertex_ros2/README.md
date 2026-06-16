@@ -78,7 +78,7 @@ ros2 service call /vertex/status vertex_ros2_msgs/srv/VertexStatus
 | `vertex.secret_key_path` | string | `""` | File holding the base58 secret key (**recommended**, §5.1) |
 | `vertex.secret_key_base58` | string | `""` | Inline base58 secret key (fallback) |
 | `vertex.peers` | string[] | `[]` | `<base58_pubkey>@<ip:port>` specs |
-| `vertex.joining_running_session` | bool | `false` | Rejoin an in-flight session (§4.4) |
+| `vertex.joining_running_session` | bool | `false` | `false` = bootstrap/fresh start; `true` = join or rejoin a running session. See the [tashi-vertex safe-usage envelope](https://github.com/tashigit/tashi-vertex-rs/blob/main/README.md#joining-or-rejoining-a-session) for preconditions and failure modes (§4.4). |
 | `bridge.tx_channel_capacity` | int | 1024 | ROS→Vertex bound; over-bound ⇒ `tx_rejected_total` |
 | `bridge.event_channel_capacity` | int | 4096 | Vertex→ROS bound |
 | `diagnostics.period_s` | double | 1.0 | `/diagnostics` publish period |
