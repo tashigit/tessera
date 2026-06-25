@@ -117,17 +117,20 @@ fn latched_qos() -> QoSProfile {
 }
 
 pub struct VertexNode {
-    node: Arc<Node>,
+    // `rclrs`'s `Node`/`Publisher`/`Subscription`/`Service` are already
+    // `Arc`-wrapped type aliases (e.g. `Publisher<T>` == `Arc<PublisherState<T>>`),
+    // so they are stored directly — no extra `Arc<…>` wrapper.
+    node: Node,
     controller: Arc<Mutex<Controller>>,
-    event_pub: Arc<Publisher<RosEvent>>,
-    sync_pub: Arc<Publisher<RosSyncPoint>>,
-    diag_pub: Arc<Publisher<DiagnosticArray>>,
-    state_pub: Arc<Publisher<RosString>>,
+    event_pub: Publisher<RosEvent>,
+    sync_pub: Publisher<RosSyncPoint>,
+    diag_pub: Publisher<DiagnosticArray>,
+    state_pub: Publisher<RosString>,
     diag_period_s: f64,
     // Kept alive for as long as the node runs.
-    _tx_sub: Arc<Subscription<RosTransaction>>,
-    _status_srv: Arc<Service<VertexStatus>>,
-    _transition_srv: Arc<Service<VertexTransition>>,
+    _tx_sub: Subscription<RosTransaction>,
+    _status_srv: Service<VertexStatus>,
+    _transition_srv: Service<VertexTransition>,
 }
 
 impl VertexNode {
@@ -253,11 +256,11 @@ struct TransitionOutcome {
 /// The subset of node state the transition/pump logic needs, shared so the
 /// service closure does not capture the whole `VertexNode` (avoids a cycle).
 struct VertexNodePre {
-    node: Arc<Node>,
+    node: Node,
     controller: Arc<Mutex<Controller>>,
-    event_pub: Arc<Publisher<RosEvent>>,
-    sync_pub: Arc<Publisher<RosSyncPoint>>,
-    state_pub: Arc<Publisher<RosString>>,
+    event_pub: Publisher<RosEvent>,
+    sync_pub: Publisher<RosSyncPoint>,
+    state_pub: Publisher<RosString>,
 }
 
 impl VertexNodePre {

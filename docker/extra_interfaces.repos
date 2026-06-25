@@ -1,0 +1,13 @@
+# Interface packages source-built alongside ros2_rust so that
+# `rosidl_generator_rs` emits Rust bindings for them. The apt-installed
+# equivalents (ros-jazzy-std-msgs, ...) ship C/C++ only — vertex_ros2 needs the
+# Rust crates for std_msgs, diagnostic_msgs and builtin_interfaces.
+repositories:
+  ros2/common_interfaces:
+    type: git
+    url: https://github.com/ros2/common_interfaces.git
+    version: jazzy
+  ros2/rcl_interfaces:
+    type: git
+    url: https://github.com/ros2/rcl_interfaces.git
+    version: jazzy

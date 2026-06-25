@@ -13,10 +13,13 @@ mod node;
 mod params;
 
 use node::VertexNode;
+// These methods come from extension traits that must be in scope:
+// `create_basic_executor` (on Context) and `first_error` (on the spin result).
+use rclrs::{CreateBasicExecutor, RclrsErrorFilter};
 
 fn main() -> Result<(), rclrs::RclrsError> {
     let context = rclrs::Context::default_from_env()?;
-    let executor = context.create_basic_executor();
+    let mut executor = context.create_basic_executor();
 
     // The node registers its publishers, subscription, services, and the
     // diagnostics timer on construction, and starts in `Unconfigured`.

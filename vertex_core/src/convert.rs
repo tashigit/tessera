@@ -73,15 +73,12 @@ impl EventRecord {
             created_at: nanos_to_time(event.created_at()),
             hash: *event.hash(),
             creator_pub_der: event.creator().to_der_vec().unwrap_or_default(),
-            // UPSTREAM GAP: `Event::whitened_signature()` calls
-            // `tv_event_get_whitened_signature`, which dereferences a null
-            // pointer and segfaults for the events this integration observes
-            // (the upstream `pingback` example never calls it). We cannot guard
-            // a segfault, so v0.1 leaves the field empty and tracks the fix
-            // upstream. See README "Open gaps". Re-enable once the FFI getter is
-            // fixed:
-            //     whitened_signature: event.whitened_signature().to_vec(),
-            whitened_signature: Vec::new(),
+            // Re-enabled against tashi-vertex v0.14.0 (TAS-92): the FFI getter
+            // `tv_event_get_whitened_signature` reads a `Box<[u8; Signature::
+            // LENGTH]>` field (engine `src/engine/event.rs:75`) via `as_ptr()`/
+            // `len()` — always non-null, fixed length, so it cannot segfault.
+            // The earlier null-deref was a pre-0.14.0 observation.
+            whitened_signature: event.whitened_signature().to_vec(),
             transactions,
         }
     }
