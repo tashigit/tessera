@@ -70,6 +70,40 @@ jobs:
         working-directory: tessera
         run: docker compose run --rm test
 
+  miri:
+    # Miri over vertex_core's pure-logic modules (design §7 "Miri'd in CI").
+    # Miri cannot execute the libtashi-vertex C FFI, so it covers only the
+    # FFI-free modules (lifecycle, convert); the "no double-send/double-free"
+    # property is guaranteed statically by the move-only `Transaction` type.
+    # Runs without Docker/ROS — vertex_core is plain-cargo and ROS-agnostic.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tessera
+        uses: actions/checkout@v4
+        with:
+          path: tessera
+
+      - name: Checkout tashi-vertex-rs (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: tashigit/tashi-vertex-rs
+          path: tashi-vertex-rs
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+
+      - name: Install nightly Rust + Miri
+        run: rustup toolchain install nightly --component miri --profile minimal
+
+      - name: Install CMake >= 4.2.3 (tashi-vertex-rs build.rs requirement)
+        run: pipx install "cmake>=4.2.3"
+
+      - name: Miri (pure modules)
+        working-directory: tessera/vertex_core
+        run: |
+          cargo +nightly miri setup
+          cargo +nightly miri test --lib lifecycle
+          cargo +nightly miri test --lib convert
+
   soak:
     # 10-minute RSS soak — nightly, or on demand via workflow_dispatch.
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_soak)

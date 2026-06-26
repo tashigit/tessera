@@ -72,7 +72,15 @@ test result: ok. 1 passed; 0 failed    # single_node (real engine round-trip)
 ```
 
 The **ROS-level** equivalents (3 `vertex_node` processes, no-publish-in-Inactive,
-10-min soak) live in `vertex_ros2/test/` as `launch_test`s for CI on Jazzy.
+10-min soak) live in `vertex_ros2/test/` as `launch_test`s for CI on Jazzy
+(`docker/` + `docker-compose.yml` run them on any machine, incl. Apple Silicon).
+
+**Miri** (design §7 "Miri'd in CI"): Miri cannot execute the `libtashi-vertex`
+C FFI, so it runs over the **FFI-free modules only** (`lifecycle`, `convert`) —
+`cargo +nightly miri test --lib lifecycle` / `--lib convert`, wired into CI. The
+property Miri was meant to back (no double-send/double-free of tx buffers) is
+instead guaranteed **statically**: `Transaction` is move-only and `mem::forget`'d
+on send, so it cannot be double-freed or sent twice from safe Rust.
 
 **Requires a ROS 2 Jazzy workspace** (built by colcon, *not* by the local `cargo`):
 the `vertex_ros2` node crate (`rclrs` + generated messages). See
