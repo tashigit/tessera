@@ -54,6 +54,17 @@ jobs:
           # Defaults to the repo's default branch (carries v0.14.0).
           ssh-key: ${{ secrets.TASHI_VERTEX_RS_DEPLOY_KEY }}
 
+      - name: Free disk space
+        # The full ros2-rust build + ROS base image + GHA cache export overflows
+        # the runner's default free space; reclaim ~20 GB of preinstalled tooling.
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -121,6 +132,17 @@ jobs:
           repository: tashigit/tashi-vertex-rs
           path: tashi-vertex-rs
           ssh-key: ${{ secrets.TASHI_VERTEX_RS_DEPLOY_KEY }}
+
+      - name: Free disk space
+        # The full ros2-rust build + ROS base image + GHA cache export overflows
+        # the runner's default free space; reclaim ~20 GB of preinstalled tooling.
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          sudo docker image prune --all --force || true
+          df -h /
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
