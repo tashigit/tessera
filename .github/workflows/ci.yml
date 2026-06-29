@@ -48,11 +48,10 @@ jobs:
         with:
           repository: tashigit/tashi-vertex-rs
           path: tashi-vertex-rs
-          # tashi-vertex-rs is private. Authenticate over SSH with a read-only
-          # deploy key: add the public half as a deploy key on tashi-vertex-rs
-          # and the private half as the TASHI_VERTEX_RS_DEPLOY_KEY secret here.
-          # Defaults to the repo's default branch (carries v0.14.0).
-          ssh-key: ${{ secrets.TASHI_VERTEX_RS_DEPLOY_KEY }}
+          # tashi-vertex-rs is private. Authenticate with a read-scoped PAT
+          # (your account already has access) stored as the TASHI_VERTEX_RS_TOKEN
+          # secret on this repo. Defaults to the repo's default branch (v0.14.0).
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
 
       - name: Free disk space
         # The full ros2-rust build + ROS base image + GHA cache export overflows
@@ -101,7 +100,7 @@ jobs:
         with:
           repository: tashigit/tashi-vertex-rs
           path: tashi-vertex-rs
-          ssh-key: ${{ secrets.TASHI_VERTEX_RS_DEPLOY_KEY }}
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
 
       - name: Install nightly Rust + Miri
         run: rustup toolchain install nightly --component miri --profile minimal
@@ -131,7 +130,7 @@ jobs:
         with:
           repository: tashigit/tashi-vertex-rs
           path: tashi-vertex-rs
-          ssh-key: ${{ secrets.TASHI_VERTEX_RS_DEPLOY_KEY }}
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
 
       - name: Free disk space
         # The full ros2-rust build + ROS base image + GHA cache export overflows
