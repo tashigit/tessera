@@ -48,10 +48,11 @@ jobs:
         with:
           repository: tashigit/tashi-vertex-rs
           path: tashi-vertex-rs
-          # tashi-vertex-rs is a private repo: provide a PAT or deploy token with
-          # read access as the TASHI_VERTEX_RS_TOKEN secret. Defaults to the
-          # repo's default branch (carries v0.14.0).
-          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+          # tashi-vertex-rs is private. Authenticate over SSH with a read-only
+          # deploy key: add the public half as a deploy key on tashi-vertex-rs
+          # and the private half as the TASHI_VERTEX_RS_DEPLOY_KEY secret here.
+          # Defaults to the repo's default branch (carries v0.14.0).
+          ssh-key: ${{ secrets.TASHI_VERTEX_RS_DEPLOY_KEY }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -89,7 +90,7 @@ jobs:
         with:
           repository: tashigit/tashi-vertex-rs
           path: tashi-vertex-rs
-          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+          ssh-key: ${{ secrets.TASHI_VERTEX_RS_DEPLOY_KEY }}
 
       - name: Install nightly Rust + Miri
         run: rustup toolchain install nightly --component miri --profile minimal
@@ -119,7 +120,7 @@ jobs:
         with:
           repository: tashigit/tashi-vertex-rs
           path: tashi-vertex-rs
-          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+          ssh-key: ${{ secrets.TASHI_VERTEX_RS_DEPLOY_KEY }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
