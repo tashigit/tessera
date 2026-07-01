@@ -14,6 +14,7 @@
 
 import json
 import os
+import signal
 import time
 import unittest
 
@@ -52,7 +53,9 @@ def generate_test_description():
             {
                 "vertex.bind_address": me["addr"],
                 "vertex.secret_key_base58": me["secret"],
-                "vertex.peers": [],  # solo session is enough to exercise the path
+                # vertex.peers omitted: launch_ros can't type an empty-list param
+                # (it becomes an empty tuple). The node defaults it to an empty
+                # array, which is exactly the solo session we want here.
                 "options.heartbeat_us": 50000,
             }
         ],
@@ -116,3 +119,14 @@ class TestSoak(unittest.TestCase):
                     f"(baseline {baseline_mb:.1f} MB, {seq} txs sent)",
                 )
         self.assertIsNotNone(baseline_mb, "soak shorter than warm-up window")
+
+
+@launch_testing.post_shutdown_test()
+class TestSoakShutdown(unittest.TestCase):
+    def test_exit_codes(self, proc_info):
+        # The harness stops the node with SIGINT (exit code -2 in Python's
+        # negative-signal convention), which is a clean teardown, not a crash.
+        launch_testing.asserts.assertExitCodes(
+            proc_info,
+            allowable_exit_codes=[0, -signal.SIGINT, -signal.SIGTERM],
+        )
