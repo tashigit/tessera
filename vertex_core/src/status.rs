@@ -22,6 +22,10 @@ pub fn error_code(err: VertexError) -> i32 {
         VertexError::BufferTooSmall => -5,
         VertexError::Base58Decode => -6,
         VertexError::SocketBind => -7,
+        VertexError::EngineStart => -8,
+        VertexError::MessageReceive => -9,
+        VertexError::TransactionSendClosed => -10,
+        VertexError::TransactionDataTooLarge => -11,
     }
 }
 

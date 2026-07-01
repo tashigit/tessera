@@ -1,0 +1,161 @@
+name: vertex_ros2 CI (Jazzy)
+
+# Runs the same Dockerized ROS 2 Jazzy harness that is used locally
+# (docker-compose.yml) so the acceptance criteria are verified in CI:
+#   * `test`  — vertex_core cargo test + colcon build + the 3-node launch_test
+#               (ordering byte-for-byte, no-publish-in-Inactive, lifecycle cycle,
+#               clean shutdown).
+#   * `soak`  — the 10-minute RSS-growth launch_test, on a nightly schedule.
+#
+# The workspace needs `tashi-vertex-rs` checked out as a sibling of this repo
+# (it is the `tashi-vertex` path dependency of vertex_core), so both repos are
+# checked out side by side and compose is run from the tessera checkout.
+#
+# Runner arch: `ubuntu-latest` is amd64; the local validation was arm64 (Apple
+# Silicon). Both work — the v0.14.0 tashi-vertex-c release ships both
+# `libtashi-vertex.so` (x86_64) and `libtashi-vertex-arm64.so`, and CMake picks
+# the right one. To run CI on arm64 instead, set `runs-on: ubuntu-24.04-arm`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * *" # nightly soak (06:00 UTC)
+  workflow_dispatch:
+    inputs:
+      run_soak:
+        description: "Also run the soak test"
+        type: boolean
+        default: false
+
+env:
+  IMAGE: tessera-ros2:jazzy
+
+jobs:
+  system-test:
+    # The 3-node launch_test + cargo test + colcon build.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tessera
+        uses: actions/checkout@v4
+        with:
+          path: tessera
+
+      - name: Checkout tashi-vertex-rs (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: tashigit/tashi-vertex-rs
+          path: tashi-vertex-rs
+          # tashi-vertex-rs is private. Authenticate with a read-scoped PAT
+          # (your account already has access) stored as the TASHI_VERTEX_RS_TOKEN
+          # secret on this repo. Defaults to the repo's default branch (v0.14.0).
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+
+      - name: Free disk space
+        # The full ros2-rust build + ROS base image + GHA cache export overflows
+        # the runner's default free space; reclaim ~20 GB of preinstalled tooling.
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the Jazzy environment image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: tessera/docker
+          file: tessera/docker/Dockerfile
+          tags: ${{ env.IMAGE }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run system tests (cargo test + colcon build + 3-node launch_test)
+        working-directory: tessera
+        run: docker compose run --rm test
+
+  miri:
+    # Miri over vertex_core's pure-logic modules (design §7 "Miri'd in CI").
+    # Miri cannot execute the libtashi-vertex C FFI, so it covers only the
+    # FFI-free modules (lifecycle, convert); the "no double-send/double-free"
+    # property is guaranteed statically by the move-only `Transaction` type.
+    # Runs without Docker/ROS — vertex_core is plain-cargo and ROS-agnostic.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tessera
+        uses: actions/checkout@v4
+        with:
+          path: tessera
+
+      - name: Checkout tashi-vertex-rs (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: tashigit/tashi-vertex-rs
+          path: tashi-vertex-rs
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+
+      - name: Install nightly Rust + Miri
+        run: rustup toolchain install nightly --component miri --profile minimal
+
+      - name: Install CMake >= 4.2.3 (tashi-vertex-rs build.rs requirement)
+        run: pipx install "cmake>=4.2.3"
+
+      - name: Miri (pure modules)
+        working-directory: tessera/vertex_core
+        run: |
+          cargo +nightly miri setup
+          cargo +nightly miri test --lib lifecycle
+          cargo +nightly miri test --lib convert
+
+  soak:
+    # 10-minute RSS soak — nightly, or on demand via workflow_dispatch.
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_soak)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tessera
+        uses: actions/checkout@v4
+        with:
+          path: tessera
+
+      - name: Checkout tashi-vertex-rs (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: tashigit/tashi-vertex-rs
+          path: tashi-vertex-rs
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+
+      - name: Free disk space
+        # The full ros2-rust build + ROS base image + GHA cache export overflows
+        # the runner's default free space; reclaim ~20 GB of preinstalled tooling.
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the Jazzy environment image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: tessera/docker
+          file: tessera/docker/Dockerfile
+          tags: ${{ env.IMAGE }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run soak (10 min)
+        working-directory: tessera
+        run: docker compose run --rm -e SOAK_SECONDS=600 soak

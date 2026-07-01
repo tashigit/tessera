@@ -57,8 +57,9 @@ fn submitted_transactions_round_trip_in_order() {
     // Drain events (each may batch several transactions) until we have collected
     // all of our payloads, or the overall deadline elapses.
     let rt = Builder::new_current_thread().enable_time().build().unwrap();
-    let received: Vec<Vec<u8>> = rt.block_on(async {
+    let (received, whitened_len): (Vec<Vec<u8>>, usize) = rt.block_on(async {
         let mut got: Vec<Vec<u8>> = Vec::new();
+        let mut whitened_len = 0usize;
         let deadline = tokio::time::Instant::now() + OVERALL_TIMEOUT;
         while got.len() < N {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -67,6 +68,11 @@ fn submitted_transactions_round_trip_in_order() {
             }
             match timeout(remaining, events.recv()).await {
                 Ok(Some(ev)) => {
+                    // whitened_signature is re-enabled against v0.14.0.
+                    // Record the length of the first non-empty one we observe.
+                    if whitened_len == 0 {
+                        whitened_len = ev.whitened_signature.len();
+                    }
                     for tx in ev.transactions {
                         // Ignore any empty/non-test transactions defensively.
                         if tx.payload.starts_with(b"tx-") {
@@ -78,8 +84,16 @@ fn submitted_transactions_round_trip_in_order() {
                 Err(_) => break,   // timed out
             }
         }
-        got
+        (got, whitened_len)
     });
+
+    // calling Event::whitened_signature() against v0.14.0 does NOT
+    // segfault (the FFI getter reads a fixed-length buffer), and
+    // the value comes back populated.
+    assert!(
+        whitened_len > 0,
+        "expected a non-empty whitened_signature on at least one event"
+    );
 
     // Delivery integrity: every submitted transaction comes back exactly once,
     // none lost, none duplicated. This also exercises the "no double-send /

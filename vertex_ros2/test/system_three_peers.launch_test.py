@@ -19,6 +19,7 @@
 
 import json
 import os
+import signal
 import time
 import unittest
 
@@ -202,5 +203,14 @@ class TestThreePeers(unittest.TestCase):
 @launch_testing.post_shutdown_test()
 class TestCleanShutdown(unittest.TestCase):
     def test_exit_codes(self, proc_info):
-        # No node should have crashed.
-        launch_testing.asserts.assertExitCodes(proc_info)
+        # No node should have *crashed*. The launch harness shuts the nodes down
+        # with SIGINT, so terminating on that signal (exit code -2) is a clean
+        # teardown, not a crash — accept it alongside a normal 0 exit. (vertex_node
+        # does not install a custom SIGINT handler, so it exits via the signal.)
+        # `proc_info.returncode` uses Python's negative-signal convention, so a
+        # SIGINT teardown shows as -2 (not the 128+N shell value some
+        # launch_testing constants use). Compute it directly to be unambiguous.
+        launch_testing.asserts.assertExitCodes(
+            proc_info,
+            allowable_exit_codes=[0, -signal.SIGINT, -signal.SIGTERM],
+        )

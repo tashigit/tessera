@@ -1,0 +1,8 @@
+# The image carries only the environment; source is bind-mounted at run time.
+# Keep build artifacts out of any accidental build context.
+**/target
+**/build
+**/install
+**/log
+.git
+vertex_ros2/test/fixtures

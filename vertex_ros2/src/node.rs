@@ -13,10 +13,15 @@
 //!
 //! # Lifecycle (design §8.4 fallback #2)
 //!
-//! `rclrs` does not ship a `LifecycleNode` (v0.7.0). Rather than block v0.1 on
-//! upstream, we expose the managed-node state machine through a
-//! `/vertex/transition` service (verbs: `configure`/`activate`/`deactivate`/
-//! `cleanup`/`shutdown`) and publish the current primary state on a latched
+//! `rclrs` does not ship a `LifecycleNode`. Re-checked 2026-06-09 (scope
+//! item 2) against `ros2-rust/ros2_rust` `main` (post-v0.7.0): `rclrs/src` still
+//! has no `lifecycle`/`LifecycleNode` module — it carries nodes, services,
+//! parameters, timers, and (newly) actions, but no managed-node support.
+//! **Decision: keep the `/vertex/transition` service fallback.**
+//!
+//! So, rather than block on upstream, we expose the managed-node state machine
+//! through a `/vertex/transition` service (verbs: `configure`/`activate`/
+//! `deactivate`/`cleanup`/`shutdown`) and publish the current primary state on a latched
 //! `/vertex/lifecycle/state` topic. The state machine itself is
 //! [`vertex_core::lifecycle`], identical to what a real `LifecycleNode` would
 //! drive — so migrating to native lifecycle later is a localized change here,
@@ -112,17 +117,20 @@ fn latched_qos() -> QoSProfile {
 }
 
 pub struct VertexNode {
-    node: Arc<Node>,
+    // `rclrs`'s `Node`/`Publisher`/`Subscription`/`Service` are already
+    // `Arc`-wrapped type aliases (e.g. `Publisher<T>` == `Arc<PublisherState<T>>`),
+    // so they are stored directly — no extra `Arc<…>` wrapper.
+    node: Node,
     controller: Arc<Mutex<Controller>>,
-    event_pub: Arc<Publisher<RosEvent>>,
-    sync_pub: Arc<Publisher<RosSyncPoint>>,
-    diag_pub: Arc<Publisher<DiagnosticArray>>,
-    state_pub: Arc<Publisher<RosString>>,
+    event_pub: Publisher<RosEvent>,
+    sync_pub: Publisher<RosSyncPoint>,
+    diag_pub: Publisher<DiagnosticArray>,
+    state_pub: Publisher<RosString>,
     diag_period_s: f64,
     // Kept alive for as long as the node runs.
-    _tx_sub: Arc<Subscription<RosTransaction>>,
-    _status_srv: Arc<Service<VertexStatus>>,
-    _transition_srv: Arc<Service<VertexTransition>>,
+    _tx_sub: Subscription<RosTransaction>,
+    _status_srv: Service<VertexStatus>,
+    _transition_srv: Service<VertexTransition>,
 }
 
 impl VertexNode {
@@ -248,11 +256,11 @@ struct TransitionOutcome {
 /// The subset of node state the transition/pump logic needs, shared so the
 /// service closure does not capture the whole `VertexNode` (avoids a cycle).
 struct VertexNodePre {
-    node: Arc<Node>,
+    node: Node,
     controller: Arc<Mutex<Controller>>,
-    event_pub: Arc<Publisher<RosEvent>>,
-    sync_pub: Arc<Publisher<RosSyncPoint>>,
-    state_pub: Arc<Publisher<RosString>>,
+    event_pub: Publisher<RosEvent>,
+    sync_pub: Publisher<RosSyncPoint>,
+    state_pub: Publisher<RosString>,
 }
 
 impl VertexNodePre {

@@ -53,6 +53,9 @@ tessera/
 - **`single_node`** — full engine path against the **real `libtashi-vertex`**:
   submit → round-trip on the event channel, every tx delivered exactly once
   (delivery integrity / no double-free, §7), counters correct, clean teardown.
+- **`tx_saturation`** — floods a deliberately tiny inbound channel with 10× its
+  capacity in a tight loop and asserts `tx_submitted_total + tx_rejected_total`
+  equals the number submitted (backpressure accounting is leak-free, §7).
 - **`lifecycle_behavior`** — the event stream closes when the node leaves
   `Active` (no publishes when not Active, §7); and a `deactivate → activate`
   cycle on the same bind address succeeds without a process restart.
@@ -68,7 +71,15 @@ test result: ok. 1 passed; 0 failed    # single_node (real engine round-trip)
 ```
 
 The **ROS-level** equivalents (3 `vertex_node` processes, no-publish-in-Inactive,
-10-min soak) live in `vertex_ros2/test/` as `launch_test`s for CI on Jazzy.
+10-min soak) live in `vertex_ros2/test/` as `launch_test`s for CI on Jazzy
+(`docker/` + `docker-compose.yml` run them on any machine, incl. Apple Silicon).
+
+**Miri** (design §7 "Miri'd in CI"): Miri cannot execute the `libtashi-vertex`
+C FFI, so it runs over the **FFI-free modules only** (`lifecycle`, `convert`) —
+`cargo +nightly miri test --lib lifecycle` / `--lib convert`, wired into CI. The
+property Miri was meant to back (no double-send/double-free of tx buffers) is
+instead guaranteed **statically**: `Transaction` is move-only and `mem::forget`'d
+on send, so it cannot be double-freed or sent twice from safe Rust.
 
 **Requires a ROS 2 Jazzy workspace** (built by colcon, *not* by the local `cargo`):
 the `vertex_ros2` node crate (`rclrs` + generated messages). See
@@ -103,13 +114,16 @@ the bounded channel is FIFO, and `Event::transactions()` iterates by index.
 
 These can't be fully closed inside this repo; each is small (design §9).
 
-1. **`whitened_signature()` segfaults.** `tv_event_get_whitened_signature`
-   dereferences a null pointer for the events we observe (the upstream `pingback`
-   example never calls it). We cannot guard a segfault, so v0.1 leaves
-   `VertexEvent.whitened_signature` **empty** and tracks the fix upstream. Re-enable
-   the one commented line in `vertex_core/src/convert.rs` once fixed.
-2. **`Transaction` Drop leaks** (§9.1) — we allocate immediately before send, so we
-   never drop an unsent buffer.
+1. **`whitened_signature()` — resolved against v0.14.0.** An earlier
+   (pre-0.14.0) build segfaulted in `tv_event_get_whitened_signature`. In v0.14.0
+   the getter reads a fixed-length buffer via `as_ptr()`/`len()` — always non-null, so it
+   cannot null-deref. `VertexEvent.whitened_signature` is now **populated**
+   (`vertex_core/src/convert.rs`); `single_node` asserts it is non-empty and
+   `multi_node` diffs it byte-for-byte across peers (it is consensus-intrinsic).
+2. **`Transaction` Drop leaks** (§9.1) — we allocate immediately before
+   send, so we never drop an unsent buffer. Note: a `Drop` calling `tv_free` would
+   be **unsound** — `tv_transaction_allocate` returns an allocation while `tv_free` expects an
+   incompatible pointer type; the real fix needs a dedicated `tv_transaction_free` upstream.
 3. **No `Engine::stop`** (§9.3) — teardown drops the `Context` on the engine thread
    after the recv loop exits; a `deactivate → activate` cycle re-creates the engine
    from scratch (verified by `lifecycle_behavior`). Because `recv_message` can't be
