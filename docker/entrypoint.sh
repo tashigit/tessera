@@ -22,6 +22,16 @@ source /opt/ros/jazzy/setup.bash
 source /opt/ros2_rust/install/setup.bash
 set -u
 
+# Isolate this container's ROS 2 DDS discovery to itself. Every node we run
+# (vertex_node, mission_coordinator, rosbridge, mock_robot, launch_tests) lives
+# in this one container; the Mac-side Webots follower talks to us over the
+# rosbridge WebSocket, not DDS. Without this, a leftover or parallel container
+# on the same Docker network shares ROS_DOMAIN_ID 0 and its nodes collide with
+# ours (duplicate transition services, drive-topic fights) — which manifests as
+# "activate not valid from state Active" and bots that never move.
+export ROS_LOCALHOST_ONLY=1
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+
 TESSERA=/ws/src/tessera
 VERTEX_RS=/ws/src/tashi-vertex-rs
 export VERTEX_RS
@@ -74,6 +84,14 @@ gen_fixtures() {
   fi
 }
 
+gen_peers4() {
+  if [ ! -f "${TESSERA}/vertex_ros2/test/simulation/fixtures/peers4.json" ]; then
+    echo "==> generating simulation fixtures/peers4.json"
+    ( VERTEX_RS="${VERTEX_RS}" bash \
+        "${TESSERA}/vertex_ros2/test/simulation/fixtures/gen_peers4.sh" )
+  fi
+}
+
 case "${1:-test}" in
   core)
     run_core
@@ -96,6 +114,25 @@ case "${1:-test}" in
     echo "==> launch_test: soak (SOAK_SECONDS=${SOAK_SECONDS:-600})"
     SOAK_SECONDS="${SOAK_SECONDS:-600}" \
       launch_test "${TESSERA}/vertex_ros2/test/soak.launch_test.py"
+    ;;
+  sim)
+    # Route-exploration simulation, container side. Webots runs NATIVELY on the
+    # host (no arm64 Linux build); this serves rosbridge + the Vertex/ROS graph.
+    build_ros
+    export_tv_libpath
+    gen_peers4
+    echo "==> sim: rosbridge (9090) + 4x vertex_node + 4x mission_coordinator"
+    echo "    On the host: open vertex_ros2/test/simulation/worlds/routes_4bot_ros2.wbt in Webots."
+    ros2 launch "${TESSERA}/vertex_ros2/test/simulation/route_exploration.launch.py"
+    ;;
+  simtest)
+    # Headless automated assertion for the route-exploration scenario: real
+    # vertex_node consensus + mission_coordinator + mock_robot (no Webots).
+    build_ros
+    export_tv_libpath
+    gen_peers4
+    echo "==> launch_test: route exploration (4x vertex_node + coordinator + mock_robot)"
+    launch_test "${TESSERA}/vertex_ros2/test/simulation/route_exploration.launch_test.py"
     ;;
   shell)
     exec bash

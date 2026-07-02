@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip python3-vcstool \
         ros-jazzy-launch-testing \
         ros-jazzy-launch-testing-ament-cmake \
+        ros-jazzy-rosbridge-suite \
         python3-psutil \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1,0 +1,64 @@
+#VRML_SIM R2025a utf8
+# ROS 2 variant of routes_4bot.wbt: identical geometry, but the four robots use
+# controller "<extern>" so they are driven from ROS 2 by waypoint_follower.py
+# (launched via webots_ros2 in route_exploration.launch.py). Keep the arena
+# geometry in sync with routes_4bot.wbt / config/routes.yaml.
+
+EXTERNPROTO "../protos/ExplorerBot.proto"
+
+WorldInfo {
+  info [ "4 routes, 4 bots (ROS 2 / Vertex-driven). Press 1-4 to block a route, 0 to clear." ]
+  title "Vertex Routes — 4 bots (ROS 2)"
+  coordinateSystem "ENU"
+  basicTimeStep 16
+  contactProperties [
+    ContactProperties { material1 "explorer" material2 "default" coulombFriction [ 0.1 ] }
+  ]
+}
+Viewpoint {
+  orientation 1 0 0 1.5708
+  position 0 0 14
+}
+Background { skyColor [ 0.55 0.65 0.8 ] }
+DirectionalLight { direction 0.4 0.3 -1 intensity 3.5 castShadows TRUE }
+DirectionalLight { direction -0.4 -0.3 -1 intensity 1.5 }
+
+DEF FLOOR Solid {
+  translation 0 0 -0.01
+  children [ Shape { appearance PBRAppearance { baseColor 0.82 0.82 0.85 roughness 1 metalness 0 } geometry Box { size 10 6 0.02 } } ]
+  name "floor"
+  boundingObject Box { size 10 6 0.02 }
+}
+
+DEF WALL_N Solid { translation 0 3 0.15 children [ Shape { appearance PBRAppearance { baseColor 0.5 0.5 0.55 } geometry Box { size 10 0.1 0.3 } } ] name "wall_north" boundingObject Box { size 10 0.1 0.3 } }
+DEF WALL_S Solid { translation 0 -3 0.15 children [ Shape { appearance PBRAppearance { baseColor 0.5 0.5 0.55 } geometry Box { size 10 0.1 0.3 } } ] name "wall_south" boundingObject Box { size 10 0.1 0.3 } }
+DEF WALL_W Solid { translation -5 0 0.15 children [ Shape { appearance PBRAppearance { baseColor 0.5 0.5 0.55 } geometry Box { size 0.1 6 0.3 } } ] name "wall_west" boundingObject Box { size 0.1 6 0.3 } }
+DEF WALL_E Solid { translation 5 0 0.15 children [ Shape { appearance PBRAppearance { baseColor 0.5 0.5 0.55 } geometry Box { size 0.1 6 0.3 } } ] name "wall_east" boundingObject Box { size 0.1 6 0.3 } }
+
+DEF DIV_1 Solid { translation 0 1.5 0.15 children [ Shape { appearance PBRAppearance { baseColor 0.6 0.6 0.62 } geometry Box { size 6 0.1 0.3 } } ] name "divider_1" boundingObject Box { size 6 0.1 0.3 } }
+DEF DIV_2 Solid { translation 0 0 0.15 children [ Shape { appearance PBRAppearance { baseColor 0.6 0.6 0.62 } geometry Box { size 6 0.1 0.3 } } ] name "divider_2" boundingObject Box { size 6 0.1 0.3 } }
+DEF DIV_3 Solid { translation 0 -1.5 0.15 children [ Shape { appearance PBRAppearance { baseColor 0.6 0.6 0.62 } geometry Box { size 6 0.1 0.3 } } ] name "divider_3" boundingObject Box { size 6 0.1 0.3 } }
+
+DEF GOAL Solid { translation 3.6 0 0.001 children [ Shape { appearance PBRAppearance { baseColor 0.2 0.8 0.3 roughness 1 } geometry Box { size 0.05 6 0.002 } } ] name "goal_line" }
+
+DEF BARRIER0 Solid { translation 1.5 2.25 -0.5 children [ Shape { appearance PBRAppearance { baseColor 0.85 0.15 0.15 roughness 1 } geometry Box { size 0.3 1.4 0.4 } } ] name "barrier_R1" boundingObject Box { size 0.3 1.4 0.4 } }
+DEF BARRIER1 Solid { translation 1.5 0.75 -0.5 children [ Shape { appearance PBRAppearance { baseColor 0.85 0.15 0.15 roughness 1 } geometry Box { size 0.3 1.4 0.4 } } ] name "barrier_R2" boundingObject Box { size 0.3 1.4 0.4 } }
+DEF BARRIER2 Solid { translation 1.5 -0.75 -0.5 children [ Shape { appearance PBRAppearance { baseColor 0.85 0.15 0.15 roughness 1 } geometry Box { size 0.3 1.4 0.4 } } ] name "barrier_R3" boundingObject Box { size 0.3 1.4 0.4 } }
+DEF BARRIER3 Solid { translation 1.5 -2.25 -0.5 children [ Shape { appearance PBRAppearance { baseColor 0.85 0.15 0.15 roughness 1 } geometry Box { size 0.3 1.4 0.4 } } ] name "barrier_R4" boundingObject Box { size 0.3 1.4 0.4 } }
+
+# Keyboard route blocking + ground truth (also used by the launch_test).
+DEF SUPERVISOR Robot {
+  translation 0 0 3
+  name "route_supervisor"
+  controller "route_supervisor"
+  supervisor TRUE
+}
+
+# Robots are driven from ROS 2. The Webots-managed "waypoint_follower" controller
+# joins the ROS graph via rclpy and namespaces itself by robot name (/robot_i);
+# mission_coordinator (a normal ROS node) commands it. Works because Webots and
+# the ROS nodes run in the same container / ROS domain (see route_exploration.launch.py).
+DEF ROBOT0 ExplorerBot { translation -4 2.25 0.05  name "robot_0" controller "waypoint_follower" bodyColor 0.90 0.30 0.30 }
+DEF ROBOT1 ExplorerBot { translation -4 0.75 0.05  name "robot_1" controller "waypoint_follower" bodyColor 0.30 0.70 0.30 }
+DEF ROBOT2 ExplorerBot { translation -4 -0.75 0.05 name "robot_2" controller "waypoint_follower" bodyColor 0.30 0.45 0.90 }
+DEF ROBOT3 ExplorerBot { translation -4 -2.25 0.05 name "robot_3" controller "waypoint_follower" bodyColor 0.90 0.75 0.20 }
