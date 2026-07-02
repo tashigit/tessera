@@ -75,6 +75,21 @@ services:
     stdin_open: true
     tty: true
 
+  # Route-exploration simulation, container side (rosbridge + vertex_node +
+  # mission_coordinator). Webots runs natively on the host and connects to
+  # rosbridge on localhost:9090. Run with:  docker compose run --rm --service-ports sim
+  sim:
+    <<: *common
+    command: ["sim"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - .:/ws/src/tessera
+      - ../tashi-vertex-rs:/ws/src/tashi-vertex-rs
+      - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+      - build-cache:/ws/build
+      - install-cache:/ws/install
+
 volumes:
   build-cache:
   install-cache:

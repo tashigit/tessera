@@ -1,0 +1,153 @@
+#VRML_SIM R2025a utf8
+# vertex_ros2 route-exploration scenario — 4 routes, 4 bots, user-blockable barriers.
+# See ../README.md (test plan) and ./README.md (quickstart).
+#
+# Layout (ENU, metres, up = +Z):
+#   * Arena 10 x 6, floor at z=0.
+#   * West staging (x < -3) and east goal (x > 3) are open and connect all lanes.
+#   * Four lanes (routes R1..R4) run x in [-3, 3] at y = 2.25 / 0.75 / -0.75 / -2.25,
+#     separated by dividers at y = 1.5 / 0 / -1.5.
+#   * A red barrier sits deep in each lane (x = 1.5), parked below the floor
+#     (open). The route_supervisor raises/lowers it on keys 1-4 (0 = clear all).
+#   * Four ExplorerBots start staged at x = -4, one per lane mouth.
+
+EXTERNPROTO "../protos/ExplorerBot.proto"
+
+WorldInfo {
+  info [ "4 routes, 4 bots. Press 1-4 in the 3D view to block/unblock a route, 0 to clear." ]
+  title "Vertex Routes — 4 bots"
+  coordinateSystem "ENU"
+  basicTimeStep 16
+  contactProperties [
+    ContactProperties { material1 "explorer" material2 "default" coulombFriction [ 0.1 ] }
+  ]
+}
+Viewpoint {
+  orientation 1 0 0 1.5708
+  position 0 0 14
+}
+Background { skyColor [ 0.55 0.65 0.8 ] }
+DirectionalLight { direction 0.4 0.3 -1 intensity 3.5 castShadows TRUE }
+DirectionalLight { direction -0.4 -0.3 -1 intensity 1.5 }
+
+# --- floor -------------------------------------------------------------------
+DEF FLOOR Solid {
+  translation 0 0 -0.01
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.82 0.82 0.85 roughness 1 metalness 0 }
+      geometry Box { size 10 6 0.02 }
+    }
+  ]
+  name "floor"
+  boundingObject Box { size 10 6 0.02 }
+}
+
+# --- perimeter walls ---------------------------------------------------------
+DEF WALL_N Solid {
+  translation 0 3 0.15
+  children [ Shape { appearance PBRAppearance { baseColor 0.5 0.5 0.55 } geometry Box { size 10 0.1 0.3 } } ]
+  name "wall_north"
+  boundingObject Box { size 10 0.1 0.3 }
+}
+DEF WALL_S Solid {
+  translation 0 -3 0.15
+  children [ Shape { appearance PBRAppearance { baseColor 0.5 0.5 0.55 } geometry Box { size 10 0.1 0.3 } } ]
+  name "wall_south"
+  boundingObject Box { size 10 0.1 0.3 }
+}
+DEF WALL_W Solid {
+  translation -5 0 0.15
+  children [ Shape { appearance PBRAppearance { baseColor 0.5 0.5 0.55 } geometry Box { size 0.1 6 0.3 } } ]
+  name "wall_west"
+  boundingObject Box { size 0.1 6 0.3 }
+}
+DEF WALL_E Solid {
+  translation 5 0 0.15
+  children [ Shape { appearance PBRAppearance { baseColor 0.5 0.5 0.55 } geometry Box { size 0.1 6 0.3 } } ]
+  name "wall_east"
+  boundingObject Box { size 0.1 6 0.3 }
+}
+
+# --- lane dividers (corridor region only: x in [-3, 3]) ----------------------
+DEF DIV_1 Solid {
+  translation 0 1.5 0.15
+  children [ Shape { appearance PBRAppearance { baseColor 0.6 0.6 0.62 } geometry Box { size 6 0.1 0.3 } } ]
+  name "divider_1"
+  boundingObject Box { size 6 0.1 0.3 }
+}
+DEF DIV_2 Solid {
+  translation 0 0 0.15
+  children [ Shape { appearance PBRAppearance { baseColor 0.6 0.6 0.62 } geometry Box { size 6 0.1 0.3 } } ]
+  name "divider_2"
+  boundingObject Box { size 6 0.1 0.3 }
+}
+DEF DIV_3 Solid {
+  translation 0 -1.5 0.15
+  children [ Shape { appearance PBRAppearance { baseColor 0.6 0.6 0.62 } geometry Box { size 6 0.1 0.3 } } ]
+  name "divider_3"
+  boundingObject Box { size 6 0.1 0.3 }
+}
+
+# --- goal marker (visual only; open zone x > 3) ------------------------------
+DEF GOAL Solid {
+  translation 3.6 0 0.001
+  children [ Shape { appearance PBRAppearance { baseColor 0.2 0.8 0.3 roughness 1 } geometry Box { size 0.05 6 0.002 } } ]
+  name "goal_line"
+}
+
+# --- route barriers (parked below floor = OPEN; raised by route_supervisor) --
+DEF BARRIER0 Solid {
+  translation 1.5 2.25 -0.5
+  children [ Shape { appearance PBRAppearance { baseColor 0.85 0.15 0.15 roughness 1 } geometry Box { size 0.3 1.4 0.4 } } ]
+  name "barrier_R1"
+  boundingObject Box { size 0.3 1.4 0.4 }
+}
+DEF BARRIER1 Solid {
+  translation 1.5 0.75 -0.5
+  children [ Shape { appearance PBRAppearance { baseColor 0.85 0.15 0.15 roughness 1 } geometry Box { size 0.3 1.4 0.4 } } ]
+  name "barrier_R2"
+  boundingObject Box { size 0.3 1.4 0.4 }
+}
+DEF BARRIER2 Solid {
+  translation 1.5 -0.75 -0.5
+  children [ Shape { appearance PBRAppearance { baseColor 0.85 0.15 0.15 roughness 1 } geometry Box { size 0.3 1.4 0.4 } } ]
+  name "barrier_R3"
+  boundingObject Box { size 0.3 1.4 0.4 }
+}
+DEF BARRIER3 Solid {
+  translation 1.5 -2.25 -0.5
+  children [ Shape { appearance PBRAppearance { baseColor 0.85 0.15 0.15 roughness 1 } geometry Box { size 0.3 1.4 0.4 } } ]
+  name "barrier_R4"
+  boundingObject Box { size 0.3 1.4 0.4 }
+}
+
+# --- route supervisor (blocking control + ground truth) ----------------------
+DEF SUPERVISOR Robot {
+  translation 0 0 3
+  name "route_supervisor"
+  controller "route_supervisor"
+  supervisor TRUE
+}
+
+# --- the four robots (one per lane mouth) ------------------------------------
+DEF ROBOT0 ExplorerBot {
+  translation -4 2.25 0.05
+  name "robot_0"
+  bodyColor 0.90 0.30 0.30
+}
+DEF ROBOT1 ExplorerBot {
+  translation -4 0.75 0.05
+  name "robot_1"
+  bodyColor 0.30 0.70 0.30
+}
+DEF ROBOT2 ExplorerBot {
+  translation -4 -0.75 0.05
+  name "robot_2"
+  bodyColor 0.30 0.45 0.90
+}
+DEF ROBOT3 ExplorerBot {
+  translation -4 -2.25 0.05
+  name "robot_3"
+  bodyColor 0.90 0.75 0.20
+}

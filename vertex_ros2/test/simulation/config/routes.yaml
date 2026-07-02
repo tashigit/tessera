@@ -1,0 +1,41 @@
+# Route geometry for the vertex_ros2 route-exploration scenario.
+# Consumed by mission_coordinator / waypoint_follower (ROS 2) and by the
+# launch_test assertions. Coordinates are ENU metres, matching worlds/routes_4bot.wbt.
+
+frame: map
+sensor_range_m: 2.0        # ExplorerBot front_ds max range (barrier-detection threshold source)
+
+staging_x: -4.0            # robots start here, one per lane mouth
+goal_x: 3.6               # a robot has "arrived" once its x exceeds this
+
+# Collision-avoidance geometry: all lane changes happen in vertical transfer
+# columns kept clear of parked bots; parking is per-bot on its own row.
+transfer_west_x: -3.5      # departure/return lane-change column (west side)
+transfer_east_x: 4.0       # goal-side lane-change column
+goal_park_x: 4.5           # arrived bots park here on their home row
+
+routes:
+  R1:
+    lane_y: 2.25
+    barrier_def: BARRIER0
+    barrier_x: 1.5
+    waypoints: [[-3.0, 2.25], [3.0, 2.25], [4.2, 2.25]]
+  R2:
+    lane_y: 0.75
+    barrier_def: BARRIER1
+    barrier_x: 1.5
+    waypoints: [[-3.0, 0.75], [3.0, 0.75], [4.2, 0.75]]
+  R3:
+    lane_y: -0.75
+    barrier_def: BARRIER2
+    barrier_x: 1.5
+    waypoints: [[-3.0, -0.75], [3.0, -0.75], [4.2, -0.75]]
+  R4:
+    lane_y: -2.25
+    barrier_def: BARRIER3
+    barrier_x: 1.5
+    waypoints: [[-3.0, -2.25], [3.0, -2.25], [4.2, -2.25]]
+
+# Barrier vertical positions used by route_supervisor (z, metres):
+barrier_open_z: -0.5       # parked below the floor
+barrier_block_z: 0.2       # raised into the lane

@@ -21,3 +21,8 @@ vertex_ros2/test/fixtures/
 
 # OS
 .DS_Store
+
+# simulation: generated keys (secrets), per-run consensus logs, Webots editor state
+vertex_ros2/test/simulation/fixtures/peers4.json
+vertex_ros2/test/simulation/logs/
+vertex_ros2/test/simulation/worlds/.*.wbproj
