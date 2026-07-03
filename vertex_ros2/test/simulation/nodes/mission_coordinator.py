@@ -43,6 +43,9 @@ class MissionCoordinator(Node):
         super().__init__("mission_coordinator")
         self.declare_parameter("robot_id", 0)
         self.declare_parameter("routes", ["R1", "R2", "R3", "R4"])
+        # lane row per route, same order as `routes` (mirrors config/routes.yaml);
+        # arrival requires being ON the claimed route's row, not just past goal_x
+        self.declare_parameter("route_lane_y", [2.25, 0.75, -0.75, -2.25])
         self.declare_parameter("goal_x", 3.6)
         self.declare_parameter("num_bots", 4)
         self.declare_parameter("claim_interval_sec", 1.5)
@@ -55,6 +58,8 @@ class MissionCoordinator(Node):
 
         self.my_id = int(self.get_parameter("robot_id").value)
         self.routes = list(self.get_parameter("routes").value)
+        self.lane_y = dict(zip(self.routes,
+                               list(self.get_parameter("route_lane_y").value)))
         self.goal_x = float(self.get_parameter("goal_x").value)
         self.num_bots = int(self.get_parameter("num_bots").value)
         self.claim_interval = float(self.get_parameter("claim_interval_sec").value)
@@ -65,6 +70,7 @@ class MissionCoordinator(Node):
 
         self.fsm = MissionState(self.routes, num_bots=self.num_bots)
         self.pose_x = -4.0
+        self.pose_y = 0.0
         self.barrier_ahead = False
 
         now = self.get_clock().now()
@@ -138,6 +144,7 @@ class MissionCoordinator(Node):
 
     def _on_pose(self, msg: PointStamped):
         self.pose_x = msg.point.x
+        self.pose_y = msg.point.y
 
     def _on_barrier(self, msg: Bool):
         self.barrier_ahead = msg.data
@@ -217,10 +224,16 @@ class MissionCoordinator(Node):
             self._reported_for = None
 
         # 1. Physical outcome for my current target (explore or converge), once.
+        #    An arrival counts only ON the target route's row: a bot can end up
+        #    past goal_x on a DIFFERENT lane (e.g. shoved down a freshly opened
+        #    route by a barrier flip mid-push) and must not credit its assigned
+        #    route with a phantom `arrived` — that poisons the shared state.
         if role in ("explore", "converge") and target is not None:
             key = (self.fsm.epoch, target)
             if self._reported_for != key:
-                if self.pose_x > self.goal_x:
+                row = self.lane_y.get(target)
+                on_row = row is None or abs(self.pose_y - row) < 0.5
+                if self.pose_x > self.goal_x and on_row:
                     self._emit({"op": "arrived", "bot": self.my_id, "route": target})
                     self._reported_for = key
                 elif self.barrier_ahead:
