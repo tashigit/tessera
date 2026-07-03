@@ -21,12 +21,20 @@ Rules (see worlds/README.md):
   * Recovery: when no claimable route exists (all blocked), a bot may re-claim a
     blocked route with `retry: true` — if the user re-opened it, the arrival
     clears its blocked mark.
+  * Lease (fault tolerance, n=4 tolerates f=1): a crashed explorer can neither
+    report nor free its route. Any bot may propose a `timeout` for an
+    assignment that has produced no outcome for the lease window; the first
+    timeout in consensus order releases the assignment (the route becomes
+    claimable again, NOT blocked — its state is unknown). Duplicates and
+    stale timeouts (victim re-assigned or already released) are no-ops, so
+    every bot proposing concurrently is safe.
 
 Transaction payloads are opaque JSON records (all carry `epoch` for reset):
     {"op":"claim",   "bot":2, "route":"R1", "epoch":0}
     {"op":"claim",   "bot":2, "route":"R1", "epoch":0, "retry":true}
     {"op":"blocked", "bot":2, "route":"R1", "epoch":0}
     {"op":"arrived", "bot":2, "route":"R1", "epoch":0}
+    {"op":"timeout", "bot":3, "victim":2, "route":"R1", "epoch":0}  # lease expiry
     {"op":"unblock_all", "bot":2,           "epoch":0}   # user changed barriers:
                                                          # stale blocks invalid
     {"op":"reset",                          "epoch":1}
@@ -112,6 +120,15 @@ class MissionState:
                     self.winner_route = route  # first success: everyone converges
                     self.assigned.clear()      # abandon in-flight explorations
             self.assigned.pop(bot, None)
+        elif op == "timeout":
+            # Lease expiry for a (presumed dead) explorer: release the victim's
+            # assignment so the route becomes claimable again. Only acts if the
+            # victim still holds exactly the named route, which makes stale and
+            # duplicate timeouts no-ops (first one in consensus order wins).
+            victim = rec.get("victim")
+            if victim is not None and self.assigned.get(victim) == route \
+                    and route is not None:
+                del self.assigned[victim]
         elif op == "unblock_all":
             # The user changed the barriers: every recorded BLOCK is stale, so
             # clear only the blocked set. Assignments and the winner stay —

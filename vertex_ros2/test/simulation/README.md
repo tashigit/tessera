@@ -1,10 +1,10 @@
 # Simulation Test Plan — `vertex_ros2` consensus-coordinated route exploration
 
-Status: **v0.2 (as built)**. The v0.1 plan described a sequential, round-based
+Status: **v0.3 (as built)**. The v0.1 plan described a sequential, round-based
 protocol; the implementation evolved to a **parallel** model (all bots move
-concurrently, consensus assigns routes exclusively) and this document now
-describes what is actually built and verified. Planned-but-unbuilt scenarios
-are kept in §4 and marked as such.
+concurrently, consensus assigns routes exclusively) and this document
+describes what is actually built and verified. All five sub-scenarios
+(N1-N5, §4) are implemented, and the headless suite runs in CI.
 Scope: application-level acceptance of the `vertex_ros2` ↔ Vertex consensus
 stack, driven by a fleet of 4 simulated robots in a physics world.
 
@@ -142,7 +142,13 @@ Rules, applied identically on every bot:
    recovers as soon as the user re-opens a route. When the supervisor
    broadcasts a world change, coordinators relay `unblock_all` into Vertex so
    stale blocked marks are dropped at the same consensus point on every bot.
-7. **Terminate.** `done` when every bot has arrived.
+7. **Lease.** A crashed explorer can neither report nor free its route. When
+   another bot's assignment has produced no outcome for `lease_sec`, every
+   live bot proposes a `timeout`; the first one in consensus order releases
+   the assignment (the route becomes claimable again, not blocked) and the
+   duplicates are no-ops. The lease restores progress; safety (exclusivity)
+   never depended on it.
+8. **Terminate.** `done` when every bot has arrived.
 
 Because these rules are a deterministic function of the same byte-identical
 ordered log, all four robots derive identical assignments, outcomes, and the
@@ -193,6 +199,7 @@ messages from before a reset are ignored:
 { "op": "claim",   "bot": 2, "route": "R1", "epoch": 0, "retry": true }  // all-blocked recovery
 { "op": "blocked", "bot": 2, "route": "R1", "epoch": 0 }
 { "op": "arrived", "bot": 1, "route": "R2", "epoch": 0 }
+{ "op": "timeout", "bot": 3, "victim": 2, "route": "R3", "epoch": 0 }  // lease expiry
 { "op": "unblock_all", "bot": 3, "seq": 2,  "epoch": 0 }  // user changed the barriers
 { "op": "reset",   "epoch": 1 }                           // supervisor reset: fresh epoch
 ```
@@ -208,9 +215,9 @@ state identically.
 |---|---|---|---|
 | **N1** | **Single blockage**: `R1` blocked, the rest open | **implemented** (`route_exploration.launch_test.py`, headless) | **All reach the end**: every bot ends `arrived`, `phase == done`. **Blocking discovered**: `R1` in every bot's `blocked` set. **Route exclusivity**: no snapshot ever shows two bots assigned one route. **Agreement**: single winner route on all bots, and all 4 `/vertex/event` streams byte-identical. **Clean shutdown**: exit codes 0 / `-SIGINT` / `-SIGTERM`. |
 | **N2** | **Multiple blockages + stale-block stress**: one route open, then the open set flipped mid-mission | **implemented** (live harness: `WEBOTS_AUTOTEST=open<k>` and `turn3` in `route_supervisor.py`) | Fleet discovers the blocks, re-explores after `unblock_all`, converges, and every car physically reaches the goal area (`SUCCESS` line). Live collision monitor: no two cars within 0.24 m. Per-node consensus logs byte-identical (`verify_consensus_logs.py`). |
-| **N3** | **Fault injection**: crash an assigned explorer's `vertex_node` mid-probe | **planned** | Lease/timeout liveness under `n=4, f=1`. Not implemented; the parallel model has no lease yet, so a crashed explorer's route stays assigned until reset. |
-| **N4** | **Lifecycle churn**: `deactivate → activate` a robot via `/vertex/transition` mid-mission | **planned** | No `Inactive` leakage; rejoin and re-converge. (The L1 variant is covered by `system_three_peers.launch_test.py`.) |
-| **N5** | **Randomized soak**: back-to-back missions with random blocked sets | **planned** | Consistent termination, no RSS growth. (The transport-level soak exists at L2.) |
+| **N3** | **Fault injection**: SIGKILL an assigned explorer (engine + coordinator + body) mid-probe, with its route the ONLY open one | **implemented** (`fault_injection.launch_test.py`) | **Lease liveness:** survivors propose `timeout`, the dead bot's route is released and re-claimed, all three survivors arrive on it. **f=1 at n=4:** the three surviving `/vertex/event` streams keep finalizing and stay byte-identical. Exclusivity holds throughout. |
+| **N4** | **Lifecycle churn**: `deactivate → activate` the first-arrived robot's `vertex_node` via `/vertex/transition` while the fleet keeps moving | **implemented** (`lifecycle_churn.launch_test.py`) | **No `Inactive` leakage:** zero messages on the churned node's `/vertex/event` while inactive, while injected no-op traffic demonstrably finalizes on the live nodes in the same window. Both transitions succeed, the mission completes, live streams stay byte-identical. (Re-delivery of events missed while inactive is upstream scope; the churned robot needs none because it already arrived.) |
+| **N5** | **Randomized soak**: back-to-back missions, each with a random blocked set (always ≥ 1 route open), restarted via consensus `reset` epochs | **implemented** (`soak_missions.launch_test.py`, `SOAK_SECONDS`) | **Consistent termination:** every mission ends `done` on all four robots with one agreed winner that is never a blocked route. **No leak:** each `vertex_node` RSS grows < 50 MB after the first-mission warm-up. Streams end byte-identical. |
 
 ### 4.1 Pass/fail table (implemented checks)
 
@@ -222,7 +229,10 @@ state identically.
 | **Liveness** | `phase` per robot | all robots reach `done` within the test deadline |
 | **Physical completion** | Supervisor ground truth (live) | every car past the goal area; `SUCCESS` printed |
 | **No collisions** | Supervisor pairwise distance monitor (live) | no pair of centres ever closer than 0.24 m |
-| **Clean shutdown** | `launch_testing` exit codes | 0 / `-SIGINT` / `-SIGTERM` |
+| **Lease liveness** | N3: survivors' `mission_state` | the dead explorer's route is released and the mission completes with 3 of 4 nodes |
+| **No `Inactive` leakage** | N4: churned node's `/vertex/event` | 0 messages while inactive, with live traffic finalizing in the window |
+| **Endurance** | N5: `vertex_node` RSS + per-mission checks | every mission terminates consistently; RSS growth < 50 MB after warm-up |
+| **Clean shutdown** | `launch_testing` exit codes | 0 / `-SIGINT` / `-SIGTERM` (plus the victim's intentional `-SIGKILL` in N3) |
 
 ---
 
@@ -232,9 +242,12 @@ state identically.
   claim for it in consensus order. This is correct precisely because all
   robots share one byte-identical ordered log; it is the property under test,
   not an assumption layered on top.
-- **No lease yet.** If an assigned explorer dies mid-probe it neither reports
-  nor frees its route; recovery is manual (supervisor reset) until N3 adds a
-  timeout record. Route exclusivity (the safety property) still holds.
+- **The lease bounds liveness, not safety.** Route exclusivity never depends
+  on the lease: while a dead explorer holds a route, nobody else is on it.
+  The `timeout` only restores progress. `lease_sec` must exceed the
+  worst-case probe time or a slow-but-alive explorer gets its route revoked;
+  that is recoverable (the bot re-enters the claim loop) but wasteful. The
+  live launch file uses 45 s, the fault-injection test 8 s.
 - **No retroactive catch-up.** Vertex orders events a node observes *while
   participating*. A node that is `Inactive` or crashed during decisions does
   not automatically relearn them on rejoin without a running-session
@@ -273,9 +286,9 @@ vertex_ros2/test/simulation/
 │   └── explorer_demo/               # iteration-1 standalone driver (no ROS)
 ├── nodes/
 │   ├── mission_fsm.py               # pure replicated state machine (§3.1)
-│   ├── test_mission_fsm.py          # 10 unit tests, plain python3
-│   ├── mission_coordinator.py       # ROS 2 wrapper: claims, outcomes, drive commands
-│   ├── mock_robot.py                # headless stand-in for Webots (CI test)
+│   ├── test_mission_fsm.py          # 13 unit tests, plain python3
+│   ├── mission_coordinator.py       # ROS 2 wrapper: claims, outcomes, lease, drive
+│   ├── mock_robot.py                # headless stand-in for Webots (freeze/blocked hooks)
 │   └── verify_consensus_logs.py     # proves live logs share one ordered stream
 ├── fixtures/
 │   ├── gen_peers4.sh                # 4 keypairs + addrs (127.0.0.1:47611-47614)
@@ -283,7 +296,10 @@ vertex_ros2/test/simulation/
 ├── logs/                            # per-node consensus logs from live runs
 ├── route_exploration.launch.py      # container side: rosbridge + 4x (vertex_node
 │                                    #   + mission_coordinator)
-└── route_exploration.launch_test.py # N1 headless integration test ("simtest")
+├── route_exploration.launch_test.py # N1 headless integration test
+├── fault_injection.launch_test.py   # N3: crash the explorer, lease recovers
+├── lifecycle_churn.launch_test.py   # N4: deactivate/activate mid-mission
+└── soak_missions.launch_test.py     # N5: randomized mission soak (SOAK_SECONDS)
 ```
 
 ### 6.1 Launch composition (per robot, ×4)
@@ -358,10 +374,17 @@ check is identical to L1 (`assertExitCodes` allowing `0 / -SIGINT /
 
 ## 8. Running
 
-Headless integration test (no Webots; this is the CI-shaped entry point):
+Headless test suite (no Webots; this is what CI runs): fsm unit tests, then
+the N1 exploration, N3 fault-injection, and N4 lifecycle-churn launch_tests:
 
 ```bash
 docker compose run --rm sim simtest
+```
+
+Mission soak (N5, long-running):
+
+```bash
+SOAK_SECONDS=300 docker compose run --rm -e SOAK_SECONDS sim simsoak
 ```
 
 Live simulation (native Webots on the Mac + the containerised ROS/Vertex
@@ -392,8 +415,10 @@ Unit tests (any host, no ROS):
 python3 vertex_ros2/test/simulation/nodes/test_mission_fsm.py
 ```
 
-CI: not yet wired in; the intended job mirrors `test` but runs `sim simtest`
-(and, later, the Webots scenarios under `--no-rendering --batch --mode=fast`).
+CI: the `sim-test` job in `.github/workflows/ci.yml` runs `sim simtest` on
+every push and pull request, and the nightly `soak` job also runs
+`sim simsoak` (5 min). The live Webots scenarios remain host-run (Webots has
+no arm64 Linux build for the container).
 
 ---
 
@@ -404,6 +429,6 @@ CI: not yet wired in; the intended job mirrors `test` but runs `sim simtest`
 | N1 agreement + byte-identical events | "events published in Vertex order; byte-identical across peers (G4)" | re-confirms at 4 peers, and shows the ordered log driving a concurrent multi-bot decision |
 | N1 route exclusivity, convergence, liveness | *(none: application layer)* | new; the coordinated-exploration demonstration |
 | N2 stale-block recovery (`unblock_all`, winner re-open) | *(none: application layer)* | new; world mutation mid-mission |
-| N3 (planned) | "n=4 tolerates f=1" + finality survives crash | only possible at ≥ 4 peers |
-| N4 (planned) | "no ROS publishes occur in `Inactive`" | L1 already covers the property; N4 would re-confirm under a moving fleet |
-| N5 (planned) | "no unbounded memory growth under 10-min load" | physical-scenario analogue of `soak.launch_test.py` |
+| N3 lease liveness + survivor agreement | "n=4 tolerates f=1" + finality survives crash | only possible at ≥ 4 peers; the survivors' byte-identical streams show finality holds with a peer dead |
+| N4 no-`Inactive` leakage | "no ROS publishes occur in `Inactive`" | re-confirms the L1 property under a moving fleet with live consensus traffic |
+| N5 mission soak | "no unbounded memory growth under 10-min load" | application-scenario analogue of `soak.launch_test.py`: churn from resets, claims, and outcomes instead of a raw tx firehose |

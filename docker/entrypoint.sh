@@ -126,13 +126,30 @@ case "${1:-test}" in
     ros2 launch "${TESSERA}/vertex_ros2/test/simulation/route_exploration.launch.py"
     ;;
   simtest)
-    # Headless automated assertion for the route-exploration scenario: real
+    # Headless automated assertions for the route-exploration scenario: real
     # vertex_node consensus + mission_coordinator + mock_robot (no Webots).
+    # Runs the full functional suite: N1 (exploration), N3 (fault injection),
+    # N4 (lifecycle churn). The mission soak (N5) is the separate `simsoak`.
     build_ros
     export_tv_libpath
     gen_peers4
+    echo "==> mission_fsm unit tests"
+    python3 "${TESSERA}/vertex_ros2/test/simulation/nodes/test_mission_fsm.py"
     echo "==> launch_test: route exploration (4x vertex_node + coordinator + mock_robot)"
     launch_test "${TESSERA}/vertex_ros2/test/simulation/route_exploration.launch_test.py"
+    echo "==> launch_test: fault injection (crash the explorer, lease recovers)"
+    launch_test "${TESSERA}/vertex_ros2/test/simulation/fault_injection.launch_test.py"
+    echo "==> launch_test: lifecycle churn (deactivate/activate mid-mission)"
+    launch_test "${TESSERA}/vertex_ros2/test/simulation/lifecycle_churn.launch_test.py"
+    ;;
+  simsoak)
+    # Randomized back-to-back mission soak (N5). SOAK_SECONDS overrides length.
+    build_ros
+    export_tv_libpath
+    gen_peers4
+    echo "==> launch_test: mission soak (SOAK_SECONDS=${SOAK_SECONDS:-120})"
+    SOAK_SECONDS="${SOAK_SECONDS:-120}" \
+      launch_test "${TESSERA}/vertex_ros2/test/simulation/soak_missions.launch_test.py"
     ;;
   shell)
     exec bash

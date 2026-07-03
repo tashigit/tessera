@@ -14,7 +14,16 @@ It emulates the *physical outcome* the coordinator reacts to:
 
 Publishes /robot_i/pose (PointStamped) and /robot_i/barrier (Bool); subscribes
 /robot_i/drive (String). Geometry mirrors config/routes.yaml.
+
+Test hooks:
+  * freeze_at_x (param): stop advancing east past this x WITHOUT raising
+    `barrier` — the robot looks alive but makes no progress, the stand-in for
+    a crashed/stalled explorer in the fault-injection test.
+  * blocked_routes (topic, std_msgs/String, JSON list): replace the blocked
+    set at runtime — lets the soak test randomize the world between missions.
 """
+
+import json
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
@@ -33,8 +42,11 @@ class MockRobot(Node):
         super().__init__("mock_robot")
         self.declare_parameter("home_lane_y", 0.0)
         self.declare_parameter("blocked_routes", [""])
+        # crash stand-in: stop advancing past this x, barrier stays low
+        self.declare_parameter("freeze_at_x", 1e9)
         self.home_y = float(self.get_parameter("home_lane_y").value)
         self.blocked = {r for r in self.get_parameter("blocked_routes").value if r}
+        self.freeze_at_x = float(self.get_parameter("freeze_at_x").value)
 
         self.x = STAGING_X
         self.y = self.home_y
@@ -44,10 +56,17 @@ class MockRobot(Node):
         self.pose_pub = self.create_publisher(PointStamped, "pose", 10)
         self.barrier_pub = self.create_publisher(Bool, "barrier", 10)
         self.create_subscription(String, "drive", self._on_drive, 10)
+        self.create_subscription(String, "blocked_routes", self._on_blocked, 10)
         self.create_timer(0.1, self._tick)
 
     def _on_drive(self, msg: String):
         self.cmd = msg.data
+
+    def _on_blocked(self, msg: String):
+        try:
+            self.blocked = {r for r in json.loads(msg.data) if r}
+        except ValueError:
+            pass
 
     def _tick(self):
         cmd = self.cmd
@@ -58,7 +77,8 @@ class MockRobot(Node):
                 self.barrier = True
             else:
                 self.barrier = False
-                self.x = min(self.x + SPEED, GOAL_X + 1.0)   # advance (reaches goal if open)
+                nxt = min(self.x + SPEED, GOAL_X + 1.0)      # advance (reaches goal if open)
+                self.x = min(nxt, max(self.x, self.freeze_at_x))
         elif cmd == "STAGING":
             self.barrier = False
             self.y = self.home_y

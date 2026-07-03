@@ -2,10 +2,14 @@ name: vertex_ros2 CI (Jazzy)
 
 # Runs the same Dockerized ROS 2 Jazzy harness that is used locally
 # (docker-compose.yml) so the acceptance criteria are verified in CI:
-#   * `test`  — vertex_core cargo test + colcon build + the 3-node launch_test
-#               (ordering byte-for-byte, no-publish-in-Inactive, lifecycle cycle,
-#               clean shutdown).
-#   * `soak`  — the 10-minute RSS-growth launch_test, on a nightly schedule.
+#   * `test`     — vertex_core cargo test + colcon build + the 3-node launch_test
+#                  (ordering byte-for-byte, no-publish-in-Inactive, lifecycle
+#                  cycle, clean shutdown).
+#   * `sim-test` — the route-exploration simulation suite, headless (mock robots,
+#                  no Webots): parallel exploration, fault injection (lease),
+#                  lifecycle churn — see vertex_ros2/test/simulation/README.md.
+#   * `soak`     — the 10-minute RSS-growth launch_test, on a nightly schedule,
+#                  plus the randomized mission soak (sim-soak).
 #
 # The workspace needs `tashi-vertex-rs` checked out as a sibling of this repo
 # (it is the `tashi-vertex` path dependency of vertex_core), so both repos are
@@ -80,6 +84,50 @@ jobs:
       - name: Run system tests (cargo test + colcon build + 3-node launch_test)
         working-directory: tessera
         run: docker compose run --rm test
+
+  sim-test:
+    # The route-exploration simulation suite, headless (no Webots): fsm unit
+    # tests + N1 exploration + N3 fault injection + N4 lifecycle churn.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tessera
+        uses: actions/checkout@v4
+        with:
+          path: tessera
+
+      - name: Checkout tashi-vertex-rs (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: tashigit/tashi-vertex-rs
+          path: tashi-vertex-rs
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the Jazzy environment image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: tessera/docker
+          file: tessera/docker/Dockerfile
+          tags: ${{ env.IMAGE }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run simulation suite (exploration + fault injection + lifecycle churn)
+        working-directory: tessera
+        run: docker compose run --rm sim simtest
 
   miri:
     # Miri over vertex_core's pure-logic modules (design §7 "Miri'd in CI").
@@ -159,3 +207,7 @@ jobs:
       - name: Run soak (10 min)
         working-directory: tessera
         run: docker compose run --rm -e SOAK_SECONDS=600 soak
+
+      - name: Run mission soak (randomized back-to-back missions, 5 min)
+        working-directory: tessera
+        run: docker compose run --rm -e SOAK_SECONDS=300 sim simsoak

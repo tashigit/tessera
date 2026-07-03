@@ -9,7 +9,8 @@ exclusively; see mission_fsm.py and worlds/README.md).
     barrier            std_msgs/Bool                  in-lane progress stalled?
     /reset             std_msgs/Int32                 Supervisor reset control
   publishes
-    /vertex/tx         vertex_ros2_msgs/VertexTransaction   claim/blocked/arrived/reset
+    /vertex/tx         vertex_ros2_msgs/VertexTransaction   claim/blocked/arrived/
+                                                            timeout/unblock_all/reset
     drive              std_msgs/String                route id | STAGING | STOP
     mission_state      std_msgs/String (JSON)         for the launch_test
 
@@ -55,6 +56,11 @@ class MissionCoordinator(Node):
         # rule: the elected bot picks its route; random tie-break by default,
         # deterministic (home lane, then lowest) for the launch_test
         self.declare_parameter("random_routes", True)
+        # lease (fault tolerance): if another bot's assignment produces no
+        # blocked/arrived outcome for this long, propose a consensus `timeout`
+        # that releases its route (first timeout in consensus order wins,
+        # duplicates are no-ops). Must exceed the worst-case probe time.
+        self.declare_parameter("lease_sec", 45.0)
 
         self.my_id = int(self.get_parameter("robot_id").value)
         self.routes = list(self.get_parameter("routes").value)
@@ -65,6 +71,7 @@ class MissionCoordinator(Node):
         self.claim_interval = float(self.get_parameter("claim_interval_sec").value)
         self.retry_after = float(self.get_parameter("retry_after_sec").value)
         self.random_routes = bool(self.get_parameter("random_routes").value)
+        self.lease_sec = float(self.get_parameter("lease_sec").value)
         # home lane: bot i <-> routes[i] (straight-out departure, no lane change)
         self.home_route = self.routes[self.my_id] if self.my_id < len(self.routes) else None
 
@@ -82,6 +89,8 @@ class MissionCoordinator(Node):
         self._winner_seen = None         # when this node learned the winner
         self._last_decision = None       # last logged (role, target) pair
         self._ev_count = 0               # consensus events delivered to this node
+        self._assign_seen = {}           # (bot, route) -> Time it entered the log
+        self._timeout_sent = set()       # (epoch, bot, route) timeouts I proposed
 
         # Per-node consensus log: one file per bot, visible on the host via the
         # bind mount. Records every delivered consensus event (with its hash),
@@ -140,6 +149,14 @@ class MissionCoordinator(Node):
             self._winner_seen = self.get_clock().now()
         elif self.fsm.phase != "converging":
             self._winner_seen = None
+        # lease bookkeeping: start a clock when an assignment enters the log,
+        # drop it when the assignment resolves (blocked/arrived/timeout/reset)
+        now = self.get_clock().now()
+        cur = set(self.fsm.assigned.items())
+        for pair in cur - set(self._assign_seen):
+            self._assign_seen[pair] = now
+        for pair in set(self._assign_seen) - cur:
+            del self._assign_seen[pair]
         self._react()
 
     def _on_pose(self, msg: PointStamped):
@@ -240,6 +257,22 @@ class MissionCoordinator(Node):
                     self._emit({"op": "blocked", "bot": self.my_id, "route": target})
                     self._reported_for = key
 
+        # 1b. Lease: another bot's assignment with no outcome for lease_sec
+        #     means its robot is presumed dead. Propose a consensus timeout to
+        #     release the route; every live bot proposes, the first one in
+        #     consensus order acts and the rest are no-ops.
+        for (bot, route), since in list(self._assign_seen.items()):
+            if bot == self.my_id:
+                continue
+            if (now - since).nanoseconds / 1e9 < self.lease_sec:
+                continue
+            key = (self.fsm.epoch, bot, route)
+            if key in self._timeout_sent:
+                continue
+            self._timeout_sent.add(key)
+            self._emit({"op": "timeout", "bot": self.my_id,
+                        "victim": bot, "route": route})
+
         # 2. Claim loop: while unassigned and exploring, claim a free route
         #    (home lane first). All bots do this concurrently; consensus order
         #    arbitrates — losers just claim again. When nothing is claimable for
@@ -322,6 +355,7 @@ class MissionCoordinator(Node):
 
         self.state_pub.publish(String(data=json.dumps({
             "robot_id": self.my_id,
+            "epoch": self.fsm.epoch,
             "assigned": {str(b): r for b, r in sorted(self.fsm.assigned.items())},
             "arrived": sorted(self.fsm.arrived),
             "blocked": sorted(self.fsm.blocked),
