@@ -200,12 +200,14 @@ Asserts (application layer of `../README.md` §7):
 
 ### What's verified
 
-- ✅ **Consensus decision logic** — `nodes/mission_fsm.py`, 10 unit tests
+- ✅ **Consensus decision logic** — `nodes/mission_fsm.py`, 13 unit tests
   (`python3 nodes/test_mission_fsm.py`): identical ordered log ⇒ identical
   assignments/state on every robot.
 - ✅ **Automated integration** — `simtest` passes in the container: 4× real
   `vertex_node` + coordinators + mock robots run the parallel rules to
-  completion (`test_parallel_exploration_all_reach_end` OK, clean-exit OK).
+  completion, then survive a SIGKILLed explorer (lease recovery, f=1) and a
+  mid-mission deactivate/activate cycle (no `Inactive` leakage). The
+  randomized mission soak is `simsoak` (see `../README.md` §8).
 - ✅ **Worlds + physics + devices** — both worlds load/run in Webots R2025a.
 - ✅ **Native follower + bridge client** — loads in Webots on the Mac
   (`websocket-client`), idles cleanly with no rosbridge, retries to connect.

@@ -194,6 +194,46 @@ def test_reset_wipes_state_via_epoch():
     print("ok  reset_wipes_state_via_epoch")
 
 
+def test_timeout_releases_dead_explorers_route():
+    # lease expiry: a timeout frees the victim's route so others can claim it;
+    # the route is NOT marked blocked (its state is unknown)
+    fleet = fresh_fleet()
+    feed(fleet, [
+        R("claim", 2, "R3"),
+        R("timeout", 0, "R3", victim=2),
+        R("claim", 1, "R3"),                 # released route is claimable again
+    ])
+    assert_agreement(fleet, "timeout")
+    f = fleet[0]
+    assert f.assigned == {1: "R3"} and "R3" not in f.blocked
+    assert f.role(2) == ("wait", None)       # victim (if alive) is just unassigned
+    print("ok  timeout_releases_dead_explorers_route")
+
+
+def test_timeout_stale_and_duplicate_are_noops():
+    fsm = MissionState(ROUTES)
+    fsm.apply(R("timeout", 0, "R3", victim=2))            # victim not assigned
+    assert fsm.assigned == {}
+    fsm.apply(R("claim", 2, "R3"))
+    fsm.apply(R("timeout", 0, "R3", victim=2))            # releases
+    fsm.apply(R("timeout", 1, "R3", victim=2))            # duplicate -> no-op
+    assert fsm.assigned == {}
+    fsm.apply(R("claim", 2, "R1"))                        # victim re-claimed
+    fsm.apply(R("timeout", 3, "R3", victim=2))            # stale route -> no-op
+    assert fsm.assigned == {2: "R1"}
+    fsm.apply(R("timeout", 3, None, victim=2))            # no route -> no-op
+    assert fsm.assigned == {2: "R1"}
+    print("ok  timeout_stale_and_duplicate_are_noops")
+
+
+def test_timeout_does_not_touch_arrived_bots():
+    fsm = MissionState(ROUTES)
+    fsm.apply(R("claim", 2, "R3")); fsm.apply(R("arrived", 2, "R3"))
+    fsm.apply(R("timeout", 0, "R3", victim=2))            # already released
+    assert 2 in fsm.arrived and fsm.winner_route == "R3"
+    print("ok  timeout_does_not_touch_arrived_bots")
+
+
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
