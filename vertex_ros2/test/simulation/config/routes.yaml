@@ -1,6 +1,8 @@
 # Route geometry for the vertex_ros2 route-exploration scenario.
-# Consumed by mission_coordinator / waypoint_follower (ROS 2) and by the
-# launch_test assertions. Coordinates are ENU metres, matching worlds/routes_4bot.wbt.
+# Reference sheet: the ROS 2 nodes and Webots controllers MIRROR these values
+# as hard-coded constants (nothing parses this file at runtime), so keep them
+# in sync when editing the world. Coordinates are ENU metres, matching
+# worlds/routes_4bot.wbt and worlds/routes_4bot_ros2.wbt.
 
 frame: map
 sensor_range_m: 2.0        # ExplorerBot front_ds max range (barrier-detection threshold source)

@@ -200,7 +200,7 @@ Asserts (application layer of `../README.md` §7):
 
 ### What's verified
 
-- ✅ **Consensus decision logic** — `nodes/mission_fsm.py`, 8 unit tests
+- ✅ **Consensus decision logic** — `nodes/mission_fsm.py`, 10 unit tests
   (`python3 nodes/test_mission_fsm.py`): identical ordered log ⇒ identical
   assignments/state on every robot.
 - ✅ **Automated integration** — `simtest` passes in the container: 4× real
@@ -209,6 +209,10 @@ Asserts (application layer of `../README.md` §7):
 - ✅ **Worlds + physics + devices** — both worlds load/run in Webots R2025a.
 - ✅ **Native follower + bridge client** — loads in Webots on the Mac
   (`websocket-client`), idles cleanly with no rosbridge, retries to connect.
-- ⏳ **Live physical run** — the manual two-terminal run above (native Webots +
-  container). Everything up to the Webots↔rosbridge hop is proven; that hop is
-  what the live run exercises (and what the headless `mock_robot` stands in for).
+- ✅ **Live physical run** — the two-terminal run above, exercised headless via
+  the autotest fixture in `route_supervisor.py`: launch Webots with
+  `WEBOTS_AUTOTEST=turn3` (open R2, then flip to R1-only mid-mission) or
+  `WEBOTS_AUTOTEST=open<k>` (exclusive-open route k). The supervisor logs
+  position telemetry, flags any pair of cars closer than 0.24 m, and prints
+  `SUCCESS` once all four cars reach the goal area. turn3 completes with zero
+  collisions and byte-identical per-node consensus logs.
