@@ -13,6 +13,9 @@
 #     "rear left wheel motor"  / "rear right wheel motor"   RotationalMotor
 #   * "gps"  GPS   ,  "imu"  InertialUnit  (yaw)
 #   * "front_ds" DistanceSensor (present but unused: blocked-detection is by stall)
+#   * "peer_tx" Emitter / "peer_rx" Receiver — sim-local pose broadcast between
+#     the bots (peer collision avoidance; no rosbridge round-trip, so it stays
+#     fresh at any simulation speed)
 
 PROTO ExplorerBot [
   field SFVec3f    translation     0 0 0.05
@@ -134,6 +137,8 @@ PROTO ExplorerBot [
       }
       GPS { name "gps" }
       InertialUnit { name "imu" }
+      Emitter { name "peer_tx" }
+      Receiver { name "peer_rx" }
     ]
     boundingObject Box { size 0.34 0.20 0.07 }
     physics Physics { density -1 mass 2.0 }

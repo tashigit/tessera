@@ -44,11 +44,26 @@ recovers as soon as you reopen a route.
 
 **Collision safety:** consensus guarantees route exclusivity (never two bots in
 one lane while exploring); physically, all lane changes run through transfer
-columns (west `x=-3.5`, east `x=4.0`) kept clear of parked cars, arrived cars
-park on their own row at `x=4.5`, and every car carries a forward **proximity
-guard** (distance sensor): anything within 0.35 m ahead → it stops and waits
-until clear. Convoying down the winner lane, followers keep spacing the same
-way.
+columns (west `x=-3.5`, east `x=4.0`) kept clear of parked cars, and arrived
+cars park on their own row at `x=4.5`. On top of that, every car broadcasts
+its pose on a sim-local radio (the proto's `peer_tx`/`peer_rx`
+Emitter/Receiver) and hears the other three, so each reacts to traffic the
+single forward ray cannot see (`assess_peers` in `waypoint_follower.py`):
+
+- **convoy spacing**: hold ~0.65 m behind a same-direction car ahead
+- **crossing traffic**: the lower bot id has right of way, the higher id stops
+- **head-on in a lane**: both cars shade right and pass inside the lane
+- **head-on in the open**: the higher id stops, the lower id drives around it
+- **stationary car in the open** (parked or yielding): steer around it, with
+  wall and divider bands excluded from the dodge
+- **stationary car in a lane**: queue behind it when exploring, squeeze past on
+  the right when returning
+- **emergency bubble**: never advance onto any car within 0.44 m ahead
+
+All rules are deterministic (ids break every tie), any active peer reaction
+freezes the stall clock so waiting for traffic is never misreported as
+`blocked`, and the forward distance sensor plus the timed standoff breaker
+remain as last-resort backstops.
 
 ## Layout (ENU metres)
 
