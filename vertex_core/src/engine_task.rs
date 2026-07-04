@@ -121,10 +121,16 @@ async fn recv_loop(
             Ok(Some(Message::Event(ev))) => {
                 let record = EventRecord::from_event(&ev);
                 drop(ev); // FFI-owned bytes already copied into `record`
+                // Count BEFORE handing the record to the consumer: the counter
+                // must already reflect the event by the time a consumer can
+                // observe it (status is read right after draining the channel;
+                // counting after send() races that read). If the send then
+                // fails the receiver is gone and we are winding down, so the
+                // at-most-one overcount is harmless.
+                status.record_event_published();
                 if event_out.send(record).await.is_err() {
                     break; // ROS dropped the /vertex/event receiver
                 }
-                status.record_event_published();
             }
             Ok(Some(Message::SyncPoint(_sp))) => {
                 let record = SyncPointRecord {
