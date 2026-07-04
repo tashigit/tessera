@@ -81,14 +81,16 @@ jobs:
         run: |
           TV_RS_SHA=$(git -C ../tashi-vertex-rs rev-parse HEAD)
           TV_C_VER=$(sed -n 's/.*TASHI_VERTEX_VERSION "\([0-9.]*\)".*/\1/p' ../tashi-vertex-rs/CMakeLists.txt | head -n1)
+          {
+            printf 'ROS 2 Jazzy install space (amd64): vertex_ros2_msgs, vertex_ros2, vertex_fleet, with libtashi-vertex.so bundled next to the binaries.\n\n'
+            printf 'Built against:\n'
+            printf -- '- tashi-vertex-rs `%s`\n' "$TV_RS_SHA"
+            printf -- '- tashi-vertex-c `v%s`\n\n' "$TV_C_VER"
+            printf 'Usage: extract into a workspace directory and `source install/setup.bash`. '
+            printf 'To build from source instead, pin these versions in `tessera.repos` (see CONSUMING.md and RELEASING.md).\n'
+          } > release_notes.md
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${GITHUB_REF_NAME}" \
-            --notes "ROS 2 Jazzy install space (amd64): vertex_ros2_msgs, vertex_ros2, vertex_fleet, with libtashi-vertex.so bundled next to the binaries.
-
-Built against:
-- tashi-vertex-rs \`${TV_RS_SHA}\`
-- tashi-vertex-c \`v${TV_C_VER}\`
-
-Usage: extract into a workspace directory and \`source install/setup.bash\`. To build from source instead, pin these versions in \`tessera.repos\` (see CONSUMING.md and RELEASING.md)." \
+            --notes-file release_notes.md \
             vertex-ros2-jazzy-*.tar.gz
