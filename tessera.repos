@@ -1,0 +1,18 @@
+# Workspace bootstrap for consumers (and CI): assembles the required sibling
+# layout in one step. From an empty workspace directory:
+#
+#   mkdir src
+#   vcs import src < tessera.repos
+#
+# tashi-vertex-rs is a path dependency of tessera/vertex_core and must sit
+# next to tessera under src/. Both repositories are private: your git
+# credentials (or a read-scoped PAT) need access to the tashigit org.
+repositories:
+  tessera:
+    type: git
+    url: git@github.com:tashigit/tessera.git
+    version: main
+  tashi-vertex-rs:
+    type: git
+    url: git@github.com:tashigit/tashi-vertex-rs.git
+    version: main

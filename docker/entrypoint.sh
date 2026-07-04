@@ -49,11 +49,11 @@ run_core() {
 }
 
 build_ros() {
-  echo "==> colcon build --packages-up-to vertex_ros2"
+  echo "==> colcon build --packages-up-to vertex_ros2 vertex_fleet"
   cd /ws
   # tashi-vertex-rs lives under src/ as a path dependency, not a colcon package;
-  # --packages-up-to builds only the node and its colcon deps.
-  colcon build --packages-up-to vertex_ros2 \
+  # --packages-up-to builds only the listed packages and their colcon deps.
+  colcon build --packages-up-to vertex_ros2 vertex_fleet \
     --cmake-args -DCMAKE_BUILD_TYPE=Release
   # colcon's setup.bash is not `set -u` safe (COLCON_TRACE, ...).
   set +u
@@ -106,6 +106,10 @@ case "${1:-test}" in
     gen_fixtures
     echo "==> launch_test: three vertex_node processes (system_three_peers)"
     launch_test "${TESSERA}/vertex_ros2/test/system_three_peers.launch_test.py"
+    echo "==> vertex_fleet unit tests"
+    python3 "${TESSERA}/vertex_fleet/test/test_state.py"
+    echo "==> launch_test: vertex_fleet ledger demo (consumer-shaped app on real consensus)"
+    launch_test "${TESSERA}/vertex_fleet/test/ledger_demo.launch_test.py"
     ;;
   soak)
     build_ros
