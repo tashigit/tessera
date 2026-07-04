@@ -57,9 +57,11 @@ Two build notes:
 - The engine bindings download the pinned `libtashi-vertex` release archive
   during the build. To build against a local `tashi-vertex-c` checkout, set
   `TASHI_VERTEX_LOCAL_DIR` to it.
-- On Linux the installed `vertex_node` currently has no rpath to
-  `libtashi-vertex.so`. Until that is fixed, export the library directory
-  before launching, the way `docker/entrypoint.sh` does:
+- The installed `vertex_node` carries an rpath to `libtashi-vertex` inside
+  the workspace build tree (plus `$ORIGIN`-relative fallbacks), so it runs
+  with no environment setup as long as the workspace stays where it was
+  built. If you relocate a built workspace, either rebuild or fall back to
+  exporting the library directory:
 
 ```bash
 export LD_LIBRARY_PATH="$(dirname "$(find build install -name 'libtashi-vertex.so' | head -n1)"):$LD_LIBRARY_PATH"
