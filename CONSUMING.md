@@ -34,6 +34,12 @@ vcs import src < tessera.repos
 
 Your own packages go in `src/` next to them.
 
+The repos file on `main` tracks `main`. For a reproducible build, replace the
+two `version:` fields with a release: the tessera tag, and the
+`tashi-vertex-rs` commit recorded in that release's notes (see
+`RELEASING.md`). Releases also ship a prebuilt Jazzy install-space tarball if
+you want to skip building entirely.
+
 ## 3. Build
 
 Native (a sourced Jazzy environment):

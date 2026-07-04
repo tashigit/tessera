@@ -1,6 +1,6 @@
 [package]
 name = "vertex_core"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "ROS-agnostic core of the Vertex/ROS 2 integration: lifecycle, the Tokio<->channel bridge, the engine task, and Vertex->message conversion. Verified by `cargo test` with no ROS install."
 license = "Apache-2.0"
