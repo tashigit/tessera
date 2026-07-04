@@ -1,0 +1,94 @@
+name: release
+
+# Cut a versioned release: validate the full suite in the Jazzy harness, then
+# publish a GitHub Release carrying a self-contained install-space tarball
+# (vertex_ros2_msgs + vertex_ros2 + vertex_fleet, with libtashi-vertex.so
+# placed next to the binaries so the $ORIGIN-relative rpath resolves without
+# any environment setup). See RELEASING.md for the procedure and the version
+# pinning chain the release notes record.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  IMAGE: tessera-ros2:jazzy
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tessera
+        uses: actions/checkout@v4
+        with:
+          path: tessera
+
+      - name: Checkout tashi-vertex-rs (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: tashigit/tashi-vertex-rs
+          path: tashi-vertex-rs
+          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the Jazzy environment image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: tessera/docker
+          file: tessera/docker/Dockerfile
+          tags: ${{ env.IMAGE }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Validate (cargo tests + 3-peer + vertex_fleet suite)
+        working-directory: tessera
+        run: docker compose run --rm test
+
+      - name: Validate (simulation suite)
+        working-directory: tessera
+        run: docker compose run --rm sim simtest
+
+      - name: Export the install space
+        working-directory: tessera
+        run: |
+          docker compose run --rm -e GITHUB_REF_NAME test bash -c '
+            set -euo pipefail
+            so=$(find /ws/build -name libtashi-vertex.so | head -n1)
+            cp "$so" /ws/install/vertex_ros2/lib/vertex_ros2/   # $ORIGIN: next to vertex_node
+            tar -C /ws -czf "/ws/src/tessera/vertex-ros2-jazzy-${GITHUB_REF_NAME}-amd64.tar.gz" install
+          '
+          ls -la vertex-ros2-jazzy-*.tar.gz
+
+      - name: Publish the GitHub Release
+        working-directory: tessera
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TV_RS_SHA=$(git -C ../tashi-vertex-rs rev-parse HEAD)
+          TV_C_VER=$(sed -n 's/.*TASHI_VERTEX_VERSION "\([0-9.]*\)".*/\1/p' ../tashi-vertex-rs/CMakeLists.txt | head -n1)
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "ROS 2 Jazzy install space (amd64): vertex_ros2_msgs, vertex_ros2, vertex_fleet, with libtashi-vertex.so bundled next to the binaries.
+
+Built against:
+- tashi-vertex-rs \`${TV_RS_SHA}\`
+- tashi-vertex-c \`v${TV_C_VER}\`
+
+Usage: extract into a workspace directory and \`source install/setup.bash\`. To build from source instead, pin these versions in \`tessera.repos\` (see CONSUMING.md and RELEASING.md)." \
+            vertex-ros2-jazzy-*.tar.gz

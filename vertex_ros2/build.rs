@@ -55,8 +55,10 @@ fn main() {
         }
     }
 
-    // Relative fallbacks: a library placed next to the installed binary
-    // (install/<pkg>/lib/<pkg>/) or one directory up (install/<pkg>/lib/).
+    // Relative fallbacks: $ORIGIN covers a library placed next to the
+    // installed binary (install/<pkg>/lib/<pkg>/, what the release tarball
+    // does); $ORIGIN/../lib covers a conventional sibling lib directory one
+    // level above the binary's own directory.
     if target_os == "macos" {
         println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path/../lib");
         println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path");
