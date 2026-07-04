@@ -126,7 +126,7 @@ class TestSoakMissions(unittest.TestCase):
             (lambda i: lambda m: events[i].append(
                 (bytes(m.hash),
                  tuple(bytes(t.payload) for t in m.transactions))))(i),
-            50) for i in range(4)]
+            1000) for i in range(4)]
         reset_pub = self.node.create_publisher(Int32, "/reset", 10)
         blocked_pubs = [self.node.create_publisher(
             String, f"/robot_{i}/blocked_routes", 10) for i in range(4)]

@@ -126,7 +126,7 @@ class TestRouteExploration(unittest.TestCase):
         subs = [self.node.create_subscription(
             String, f"/robot_{i}/mission_state", make_cb(i), 10) for i in range(self.n)]
         subs += [self.node.create_subscription(
-            VertexEvent, f"/robot_{i}/vertex/event", make_ev_cb(i), 50)
+            VertexEvent, f"/robot_{i}/vertex/event", make_ev_cb(i), 1000)
             for i in range(self.n)]
 
         # Run until every bot has reached the end (phase DONE on all), R1 blocked.

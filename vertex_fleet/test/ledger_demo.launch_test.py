@@ -101,7 +101,7 @@ class TestLedgerDemo(unittest.TestCase):
             (lambda i: lambda m: events[i].append(
                 (bytes(m.hash),
                  tuple(bytes(t.payload) for t in m.transactions))))(i),
-            50) for i in range(N)]
+            1000) for i in range(N)]
 
         deadline = time.time() + 90.0
         while time.time() < deadline:

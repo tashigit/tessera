@@ -128,12 +128,16 @@ class TestLifecycleChurn(unittest.TestCase):
             String, f"/robot_{i}/mission_state",
             (lambda i: lambda m: latest.__setitem__(i, json.loads(m.data)))(i),
             10) for i in range(4)]
+        # Deep queues: the byte-identical comparison below is only meaningful
+        # if THIS observer never drops an event during bursts. A shallow depth
+        # here once made CI fail with "streams differ" when the real cause was
+        # the test's own subscription overflowing and misaligning the prefixes.
         subs += [self.node.create_subscription(
             VertexEvent, f"/robot_{i}/vertex/event",
             (lambda i: lambda m: events[i].append(
                 (bytes(m.hash),
                  tuple(bytes(t.payload) for t in m.transactions))))(i),
-            50) for i in range(4)]
+            1000) for i in range(4)]
 
         # Phase 1: wait for the first arrival — that robot is the churn target.
         deadline = time.time() + 60.0
@@ -157,17 +161,24 @@ class TestLifecycleChurn(unittest.TestCase):
         # Force live consensus traffic during the Inactive window: no-op
         # records finalize on the active nodes, so silence on the churned
         # node's /vertex/event is meaningful, not just an idle network.
+        # Rate-limited to ~10 noops/s: spin_once returns immediately while
+        # events are flowing, so publishing once per loop iteration floods
+        # thousands of records on a fast runner and buries the observer.
+        # A few dozen finalized noops prove liveness just as well.
         pub = self.node.create_publisher(
             VertexTransaction, f"/robot_{others[0]}/vertex/tx", 10)
         end = time.time() + 3.0
         seq = 0
+        last_pub = 0.0
         while time.time() < end:
-            msg = VertexTransaction()
-            msg.payload = list(json.dumps(
-                {"op": "noop", "seq": seq, "epoch": 0}).encode())
-            pub.publish(msg)
-            seq += 1
-            rclpy.spin_once(self.node, timeout_sec=0.1)
+            if time.time() - last_pub >= 0.1:
+                last_pub = time.time()
+                msg = VertexTransaction()
+                msg.payload = list(json.dumps(
+                    {"op": "noop", "seq": seq, "epoch": 0}).encode())
+                pub.publish(msg)
+                seq += 1
+            rclpy.spin_once(self.node, timeout_sec=0.05)
 
         self.assertEqual(len(events[target]), target_events_before,
                          "churned node published on /vertex/event while Inactive")

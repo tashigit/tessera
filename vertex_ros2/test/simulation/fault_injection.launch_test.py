@@ -136,7 +136,7 @@ class TestFaultInjection(unittest.TestCase):
         subs = [self.node.create_subscription(
             String, f"/robot_{i}/mission_state", make_cb(i), 10) for i in range(4)]
         subs += [self.node.create_subscription(
-            VertexEvent, f"/robot_{i}/vertex/event", make_ev_cb(i), 50)
+            VertexEvent, f"/robot_{i}/vertex/event", make_ev_cb(i), 1000)
             for i in SURVIVORS]
 
         # Phase 1: wait until consensus has assigned R3 to the victim.
