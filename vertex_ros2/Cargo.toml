@@ -1,6 +1,6 @@
 [package]
 name = "vertex_ros2"
-version = "0.3.0"
+version = "0.1.0"
 edition = "2021"
 description = "ROS 2 node (vertex_node) exposing Tashi Vertex consensus on /vertex/tx, /vertex/event, /vertex/sync_point, /vertex/status and /diagnostics."
 license = "Apache-2.0"

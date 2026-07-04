@@ -30,17 +30,21 @@ recorded bindings commit → its pinned engine release.
 
 ## Cutting a release
 
-1. Bump the shared version in `vertex_ros2_msgs/package.xml`,
+Version numbers follow the project's versioning plan. Confirm the target
+version with the team before changing anything; nothing in this repository
+derives or bumps versions automatically.
+
+1. Set the agreed version in `vertex_ros2_msgs/package.xml`,
    `vertex_ros2/package.xml` + `Cargo.toml`, `vertex_core/Cargo.toml`, and
    `vertex_fleet/package.xml` + `setup.py`. Build once so the `Cargo.lock`
-   files pick up the new versions, and commit the locks with the bump.
+   files pick up the new versions, and commit the locks with the change.
 2. Run the full suite: `docker compose run --rm test` and
    `docker compose run --rm sim simtest` must both pass.
-3. Tag and push:
+3. Tag and push (any `v*` tag triggers the workflow):
 
 ```bash
-git tag -a v0.3.0 -m "v0.3.0"
-git push origin v0.3.0
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
 4. The `release` workflow does the rest. Check the run, then sanity-check the
