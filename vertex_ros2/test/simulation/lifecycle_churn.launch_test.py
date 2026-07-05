@@ -138,6 +138,12 @@ class TestLifecycleChurn(unittest.TestCase):
                 (bytes(m.hash),
                  tuple(bytes(t.payload) for t in m.transactions))))(i),
             1000) for i in range(4)]
+        # Created up front so DDS discovery completes during phase 1: a
+        # publisher created at churn time silently drops everything published
+        # before its subscription matches, and on a loaded runner that race
+        # once ate the whole injection window.
+        tx_pubs = [self.node.create_publisher(
+            VertexTransaction, f"/robot_{i}/vertex/tx", 10) for i in range(4)]
 
         # Phase 1: wait for the first arrival — that robot is the churn target.
         deadline = time.time() + 60.0
@@ -161,16 +167,20 @@ class TestLifecycleChurn(unittest.TestCase):
         # Force live consensus traffic during the Inactive window: no-op
         # records finalize on the active nodes, so silence on the churned
         # node's /vertex/event is meaningful, not just an idle network.
-        # Rate-limited to ~10 noops/s: spin_once returns immediately while
-        # events are flowing, so publishing once per loop iteration floods
-        # thousands of records on a fast runner and buries the observer.
-        # A few dozen finalized noops prove liveness just as well.
-        pub = self.node.create_publisher(
-            VertexTransaction, f"/robot_{others[0]}/vertex/tx", 10)
-        end = time.time() + 3.0
+        # Rate-limited to ~10 noops/s (an unthrottled loop once buried the
+        # observer), and ADAPTIVE: inject until every live node has grown,
+        # with a floor on the quiet period, instead of betting that a fixed
+        # window outlasts runner load and consensus latency.
+        pub = tx_pubs[others[0]]
+        min_window = time.time() + 3.0
+        deadline = time.time() + 30.0
         seq = 0
         last_pub = 0.0
-        while time.time() < end:
+        while time.time() < deadline:
+            grown = all(len(events[i]) > others_events_before[i]
+                        for i in others)
+            if grown and time.time() >= min_window:
+                break
             if time.time() - last_pub >= 0.1:
                 last_pub = time.time()
                 msg = VertexTransaction()
