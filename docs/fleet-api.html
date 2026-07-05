@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adding Vertex consensus to your ROS 2 project with vertex_fleet</title>
+<style>
+  :root {
+    --paper: #f8f7f5;
+    --ink: #26221b;
+    --muted: #6b6357;
+    --line: #e3ded6;
+    --accent: #96551c;
+    --accent-soft: #f3e8dc;
+    --code-bg: #241f18;
+    --code-ink: #e7e0d5;
+    --code-dim: #998f7e;
+    --good: #1a7f37;
+    --bad: #b3402f;
+    --r0: #c94f4f; --r1: #4f9e52; --r2: #4a71c8;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    --sans: "Avenir Next", "Segoe UI", -apple-system, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.65; }
+  .wrap { display: flex; max-width: 1200px; margin: 0 auto; }
+
+  nav { width: 232px; flex: none; position: sticky; top: 0; align-self: flex-start;
+    max-height: 100vh; overflow-y: auto; padding: 40px 20px 40px 28px;
+    font-family: var(--sans); font-size: 13px; border-right: 1px solid var(--line);
+    box-sizing: border-box; }
+  nav .brand { font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    font-size: 11px; color: var(--accent); margin-bottom: 18px; }
+  nav a { display: block; color: var(--muted); text-decoration: none;
+    padding: 5px 8px; border-left: 2px solid transparent; margin-left: -10px; line-height: 1.35; }
+  nav a:hover { color: var(--ink); }
+  nav a:focus-visible { outline: 2px solid var(--accent); border-radius: 3px; }
+  nav a.on { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+
+  main { flex: 1; min-width: 0; padding: 48px 56px 120px; box-sizing: border-box; }
+  @media (max-width: 900px) { nav { display: none; } main { padding: 32px 20px 80px; } }
+
+  header.doc h1 { font-family: var(--sans); font-weight: 700; font-size: 34px;
+    line-height: 1.15; letter-spacing: -0.015em; margin: 8px 0 14px; text-wrap: balance; }
+  .eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  .lede { font-size: 19px; color: #453e33; max-width: 62ch; }
+  h2 { font-family: var(--sans); font-weight: 700; font-size: 24px;
+    letter-spacing: -0.01em; margin: 64px 0 8px; text-wrap: balance; scroll-margin-top: 24px; }
+  h2 .stepno { font-size: 12px; font-weight: 600; letter-spacing: .12em;
+    color: var(--accent); text-transform: uppercase; display: block; margin-bottom: 4px; }
+  h3 { font-family: var(--sans); font-size: 17px; margin: 30px 0 6px; scroll-margin-top: 24px; }
+  p, ul, ol { max-width: 66ch; }
+  li { margin-bottom: 5px; }
+  a { color: var(--accent); }
+  strong { color: #191510; }
+  .note { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    background: var(--accent-soft); padding: 12px 16px; max-width: 62ch;
+    font-size: 15.5px; border-radius: 0 6px 6px 0; margin: 18px 0; }
+  .warstory { border-left-color: var(--bad); background: #f6e6e2; }
+
+  .tablewrap { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; font-family: var(--sans); font-size: 14px; min-width: 560px; }
+  th { text-align: left; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  th, td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td code, p code, li code, .note code { font-family: var(--mono); font-size: .85em;
+    background: #ece7de; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+
+  .code { position: relative; background: var(--code-bg); color: var(--code-ink);
+    border-radius: 8px; margin: 16px 0; font-size: 13.5px; }
+  .code .lang { position: absolute; top: 9px; left: 14px; font-family: var(--sans);
+    font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--code-dim); }
+  .code button.copy { position: absolute; top: 6px; right: 8px; font-family: var(--sans);
+    font-size: 11px; padding: 3px 10px; border-radius: 5px;
+    border: 1px solid #443c30; background: transparent; color: var(--code-dim); cursor: pointer; }
+  .code button.copy:hover { color: var(--code-ink); border-color: var(--code-dim); }
+  .code button.copy:focus-visible { outline: 2px solid var(--accent); }
+  .code pre { margin: 0; padding: 34px 18px 16px; overflow-x: auto;
+    font-family: var(--mono); line-height: 1.55; }
+  .code .c { color: #8b8171; }
+  .code .k { color: #e0b184; }
+  .code .s { color: #a9c98e; }
+
+  /* ---- fold sandbox ---- */
+  .sand { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 20px; margin: 22px 0; font-family: var(--sans); }
+  .sand h3 { margin: 0 0 2px; font-size: 16px; }
+  .sand .sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; max-width: 70ch; }
+  .sandgrid { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(250px, 1fr); gap: 16px; }
+  @media (max-width: 700px) { .sandgrid { grid-template-columns: 1fr; } }
+  .sand .loglist { font-family: var(--mono); font-size: 11.5px; background: var(--code-bg);
+    color: var(--code-dim); border-radius: 8px; padding: 10px 12px; height: 210px;
+    overflow-y: auto; line-height: 1.7; }
+  .sand .loglist .seq { color: #6e6250; }
+  .sand .loglist .applied { color: var(--code-ink); }
+  .sand .loglist .noop { text-decoration: line-through; opacity: .65; }
+  .sand .statebox { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+    font-size: 13.5px; background: #fbfaf8; }
+  .sand .statebox b { font-size: 13px; }
+  .sand .dock { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .sand .dock .plug { font-size: 17px; }
+  .sand .dock .who { margin-left: auto; font-family: var(--mono); font-size: 12px;
+    padding: 1px 8px; border-radius: 999px; color: #fff; }
+  .sand .dock .who.free { background: transparent; color: var(--muted); border: 1px dashed var(--line); }
+  .sand .fp { font-family: var(--mono); font-size: 11px; margin-top: 10px;
+    color: var(--accent); background: var(--accent-soft); display: inline-block;
+    padding: 2px 8px; border-radius: 4px; }
+  .sand .verdictline { font-size: 12.5px; margin-top: 8px; color: var(--good); font-weight: 600; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .sand button.act, .stepper button { font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+    padding: 5px 11px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); cursor: pointer; }
+  .sand button.act:hover:not(:disabled), .stepper button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .sand button.act:disabled, .stepper button:disabled { opacity: .4; cursor: default; }
+  .sand button.act:focus-visible, .stepper button:focus-visible { outline: 2px solid var(--accent); }
+  .sand .flash { animation: flash .8s ease-out; }
+  @keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
+  @media (prefers-reduced-motion: reduce) { .sand .flash { animation: none; } }
+  .sand .toast { font-size: 12.5px; min-height: 18px; margin-top: 8px; color: var(--muted); }
+
+  /* ---- stepper ---- */
+  .stepper { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 20px; margin: 22px 0; font-family: var(--sans); }
+  .stepper h3 { margin: 0 0 2px; font-size: 16px; }
+  .stepper .sub { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .stepper .why { font-size: 14px; max-width: none; min-height: 66px;
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+  .stepper pre { margin: 0; background: var(--code-bg); color: var(--code-dim);
+    border-radius: 8px; padding: 14px 16px; overflow-x: auto;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+  .stepper pre .on { color: var(--code-ink); }
+  .stepper pre .add { color: #a9c98e; background: rgba(120, 160, 90, .13); display: inline-block; width: 100%; }
+  .stepper .nav2 { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .stepper .prog { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+  .checklist { list-style: none; padding: 0; max-width: 70ch; font-family: var(--sans); font-size: 15px; }
+  .checklist li { display: flex; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); align-items: baseline; }
+  .checklist input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; transform: translateY(2px); }
+  .checklist label { cursor: pointer; }
+  .checklist input:checked + label { color: var(--muted); text-decoration: line-through; }
+
+  .kicker { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .series { font-family: var(--sans); font-size: 13px; border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 14px; margin: 18px 0; background: #fff; max-width: 62ch; }
+  .series b { color: var(--accent); }
+  .series a { text-decoration: none; }
+
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-family: var(--sans); font-size: 13px; color: var(--muted); max-width: 66ch; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav aria-label="Contents">
+  <div class="brand">Tessera / Fleet API</div>
+  <a href="#fit">Where this fits</a>
+  <a href="#api">The two base classes</a>
+  <a href="#s1">1 · Setup in five minutes</a>
+  <a href="#s2">2 · Model the shared state</a>
+  <a href="#sandbox">Try the fold</a>
+  <a href="#s3">3 · Write the agent</a>
+  <a href="#s4">4 · Package it</a>
+  <a href="#s5">5 · Launch the fleet</a>
+  <a href="#s6">6 · Test it</a>
+  <a href="#rules">Rules that keep fleets convergent</a>
+  <a href="#checklist">Checklist</a>
+  <a href="#next">Going further</a>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">Tutorial · Volume 2 · The fleet API</div>
+  <h1>Adding Vertex consensus to your ROS 2 project with vertex_fleet</h1>
+  <p class="lede">This is the fastest route from an existing ROS 2 fleet to leaderless, BFT-consensus coordination: two base classes from the <code>vertex_fleet</code> library, one launch pattern, and a handful of rules the library enforces for you. I build a complete, realistic example along the way: robots allocating charging docks among themselves with no server and no leader.</p>
+  <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;<a href="concepts.html">Concepts and protocol design</a> (the mental model) &nbsp;→&nbsp; 2&nbsp;·&nbsp;The fleet API (you are here) &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> (non-ROS embeddings and adapters). This volume stands alone; read Volume&nbsp;1 when you design a protocol beyond the patterns shown here.</div>
+  <p class="kicker">You need: a ROS 2 Jazzy workspace with the tessera packages built (section 1), and a fleet problem where machines must agree.</p>
+</header>
+
+<h2 id="fit">Where this fits</h2>
+<p>The tessera integration exposes Vertex consensus to ROS 2 at three levels. This tutorial covers the top one, which is where most projects should start:</p>
+<div class="tablewrap"><table>
+  <tr><th>Level</th><th>You write</th><th>Covered in</th></tr>
+  <tr><td><strong>vertex_fleet</strong> (this tutorial)</td><td>a state class and an agent class; the library owns the consensus plumbing</td><td>here</td></tr>
+  <tr><td>raw topic contract</td><td>your own fold and lifecycle handling against <code>/vertex/tx</code> and <code>/vertex/event</code></td><td>Volume 1 (concepts and protocol design)</td></tr>
+  <tr><td>Rust crate (<code>vertex_core</code>)</td><td>an embedding with no ROS at all, or an adapter for another middleware</td><td>Volume 3 (crate-level internals)</td></tr>
+</table></div>
+<p>The one-paragraph mental model, in case you land here first: every robot runs a <code>vertex_node</code>, the engines gossip over UDP, and every robot receives the <strong>same totally-ordered stream of finalized records</strong>. Nothing else is shared. Each robot folds that stream through the same pure function, so each robot derives the same fleet state, and coordination follows with no leader, no server, and tolerance of <code>f</code> crashed or malicious robots in a fleet of <code>3f + 1</code>.</p>
+
+<h2 id="api">The two base classes</h2>
+<p>An application on <code>vertex_fleet</code> is one subclass of each:</p>
+<div class="tablewrap"><table>
+  <tr><th>You implement</th><th>On</th><th>Contract</th></tr>
+  <tr><td><code>wipe()</code></td><td><code>ReplicatedState</code></td><td>clear every piece of derived state (called at construction and on a consensus <code>reset</code>)</td></tr>
+  <tr><td><code>apply_record(rec)</code></td><td><code>ReplicatedState</code></td><td>fold ONE record into state. Pure and idempotent: no I/O, no clocks, no randomness, duplicates change nothing</td></tr>
+  <tr><td><code>tick()</code></td><td><code>VertexAgent</code></td><td>periodic hook, runs only while the engine is Active. Read state, read sensors, call <code>propose(...)</code></td></tr>
+  <tr><td><code>on_state_changed()</code></td><td><code>VertexAgent</code></td><td>called after each consensus event folds. React to the new state (drive, navigate, actuate)</td></tr>
+  <tr><td><code>on_event(msg)</code> <em>(optional)</em></td><td><code>VertexAgent</code></td><td>the raw finalized event (hash, timestamps, transactions) for logging and telemetry</td></tr>
+</table></div>
+<p>And what the library gives you in return:</p>
+<ul>
+  <li><code>propose(record)</code> submits a record stamped with the current epoch. It has <strong>no local effect</strong>: state changes only if and when the record returns finalized, identically on every robot</li>
+  <li><code>propose_reset(epoch)</code> restarts the whole fleet's state at a fresh epoch through consensus (first reset in the order wins)</li>
+  <li>epoch gating: records from earlier epochs are ignored automatically</li>
+  <li>lifecycle bring-up: the agent drives its own <code>vertex_node</code> to Active and retries until it succeeds; <code>engine_running</code> tells you where it stands</li>
+  <li>the structural guarantee that makes everything work: your state has exactly one mutation path, the consensus event callback. Sensors and timers can read it and propose, never write it</li>
+</ul>
+
+<h2 id="s1"><span class="stepno">Step 1</span>Setup in five minutes</h2>
+<p>If your workspace already builds tessera, skip ahead. Otherwise, the two repositories sit side by side and one vcs file assembles them:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+mkdir -p fleet_ws/src && cd fleet_ws
+curl -fsSL https://raw.githubusercontent.com/tashigit/tessera/main/tessera.repos -o tessera.repos
+vcs import src &lt; tessera.repos
+colcon build --packages-up-to vertex_ros2 vertex_fleet --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+</pre></div>
+<p>Each robot needs an identity (an Ed25519 keypair) and a UDP address. For development, the helper writes a ready peers file:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+bash src/tessera/vertex_ros2/test/gen_test_keys.sh     <span class="c"># writes peers.json</span>
+</pre></div>
+<p>Full setup detail, the Docker harness, and production key handling live in the repository's <code>CONSUMING.md</code>. That is the reference; this tutorial stays on the application.</p>
+
+<h2 id="s2"><span class="stepno">Step 2</span>Model the shared state</h2>
+<p>The worked example: a warehouse fleet with a few charging docks. Robots decide among themselves who gets which dock. No dock server, no fleet manager, and the allocation survives any single robot crashing mid-negotiation.</p>
+<p>Design the records first. Two verbs are enough, and the noun names say what agreement is about:</p>
+<div class="code"><span class="lang">jsonc — the protocol</span><button class="copy">Copy</button><pre>
+{ <span class="s">"op"</span>: <span class="s">"claim"</span>,   <span class="s">"robot"</span>: <span class="s">"r0"</span>, <span class="s">"dock"</span>: <span class="s">"dock_a"</span>, <span class="s">"epoch"</span>: 0 }
+{ <span class="s">"op"</span>: <span class="s">"release"</span>, <span class="s">"robot"</span>: <span class="s">"r0"</span>, <span class="s">"dock"</span>: <span class="s">"dock_a"</span>, <span class="s">"epoch"</span>: 0 }
+</pre></div>
+<p>Then the fold. This is the most important twenty lines of your integration, and the library keeps them honest: epoch gating and reset handling are inherited, so the subclass folds only its own ops. Keep it pure, keep it idempotent, and resolve every conflict by log order:</p>
+<div class="code"><span class="lang">python — my_fleet/dock_state.py (pure, no ROS imports)</span><button class="copy">Copy</button><pre>
+<span class="k">from</span> vertex_fleet <span class="k">import</span> ReplicatedState
+
+DOCKS = [<span class="s">"dock_a"</span>, <span class="s">"dock_b"</span>]
+
+<span class="k">class</span> DockState(ReplicatedState):
+    <span class="s">"""Who holds which charging dock. Same log in, same allocation out,
+    on every robot."""</span>
+
+    <span class="k">def</span> wipe(self):
+        self.occupied = {}                          <span class="c"># dock -> robot</span>
+
+    <span class="k">def</span> apply_record(self, rec):
+        op, robot, dock = rec.get(<span class="s">"op"</span>), rec.get(<span class="s">"robot"</span>), rec.get(<span class="s">"dock"</span>)
+        <span class="k">if</span> op == <span class="s">"claim"</span>:
+            <span class="c"># first claim in the finalized order wins; a robot holds at</span>
+            <span class="c"># most one dock; duplicates and losers are no-ops</span>
+            <span class="k">if</span> (dock <span class="k">in</span> DOCKS <span class="k">and</span> dock <span class="k">not</span> <span class="k">in</span> self.occupied
+                    <span class="k">and</span> robot <span class="k">not</span> <span class="k">in</span> self.occupied.values()):
+                self.occupied[dock] = robot
+        <span class="k">elif</span> op == <span class="s">"release"</span>:
+            <span class="c"># only the holder can release; anything else is a no-op</span>
+            <span class="k">if</span> self.occupied.get(dock) == robot:
+                <span class="k">del</span> self.occupied[dock]
+
+    <span class="k">def</span> dock_of(self, robot):
+        <span class="k">for</span> dock, holder <span class="k">in</span> self.occupied.items():
+            <span class="k">if</span> holder == robot:
+                <span class="k">return</span> dock
+        <span class="k">return</span> <span class="k">None</span>
+</pre></div>
+
+<h3 id="sandbox">Try the fold before you trust it</h3>
+<p>This sandbox runs the exact <code>DockState</code> semantics. The log is the single source of truth: append records and watch three independent replicas fold them. Try the buttons that <em>should</em> change nothing, because no-ops under concurrency are what make the whole scheme safe.</p>
+
+<div class="sand" id="sand">
+  <h3>Fold sandbox: DockState</h3>
+  <div class="sub">Every button appends one record to the shared finalized log (left). Three replicas fold it independently (right); struck-through entries were folded as no-ops. The fingerprints must always match, whatever you do.</div>
+  <div class="sandgrid">
+    <div>
+      <div class="loglist" id="loglist"><span style="opacity:.6">log empty, append records below</span></div>
+      <div class="btnrow" id="sandbtns">
+        <button class="act" data-a="claim" data-r="r0">r0 claims a dock</button>
+        <button class="act" data-a="claim" data-r="r1">r1 claims a dock</button>
+        <button class="act" data-a="claim" data-r="r2">r2 claims a dock</button>
+        <button class="act" data-a="release">holder releases</button>
+      </div>
+      <div class="btnrow">
+        <button class="act" data-a="dup">duplicate the last record</button>
+        <button class="act" data-a="stale">inject a stale-epoch claim</button>
+        <button class="act" data-a="steal">r2 claims an occupied dock</button>
+        <button class="act" data-a="reset">consensus reset (epoch + 1)</button>
+      </div>
+      <div class="toast" id="toast"></div>
+    </div>
+    <div>
+      <div class="statebox" id="statebox"></div>
+      <div class="verdictline" id="sandverdict"></div>
+    </div>
+  </div>
+</div>
+
+<h2 id="s3"><span class="stepno">Step 3</span>Write the agent</h2>
+<p>The agent connects three things: the shared state (folded for you), your robot's own sensors (battery, here), and your actuators (your navigation stack). Step through how it assembles, then take the complete file below.</p>
+
+<div class="stepper" id="stepper">
+  <h3>Agent assembly, one decision at a time</h3>
+  <div class="sub">Each step adds the highlighted lines and explains why they exist.</div>
+  <div class="why" id="stepwhy"></div>
+  <pre id="stepcode"></pre>
+  <div class="nav2">
+    <button id="prevbtn">Back</button>
+    <button id="nextbtn">Next step</button>
+    <span class="prog" id="stepprog"></span>
+  </div>
+</div>
+
+<p>The complete file, ready to copy:</p>
+<div class="code"><span class="lang">python — my_fleet/dock_agent.py</span><button class="copy">Copy</button><pre>
+<span class="k">from</span> std_msgs.msg <span class="k">import</span> Float32, String
+
+<span class="k">from</span> vertex_fleet <span class="k">import</span> VertexAgent, spin_agent
+<span class="k">from</span> my_fleet.dock_state <span class="k">import</span> DOCKS, DockState
+
+
+<span class="k">class</span> DockAgent(VertexAgent):
+    <span class="k">def</span> __init__(self):
+        <span class="k">super</span>().__init__(<span class="s">"dock_agent"</span>, DockState())
+        self.declare_parameter(<span class="s">"robot_name"</span>, <span class="s">"r0"</span>)
+        self.me = self.get_parameter(<span class="s">"robot_name"</span>).value
+        self.battery = 1.0
+        self.create_subscription(Float32, <span class="s">"battery_level"</span>,
+                                 self._on_battery, 10)
+        self._goal_pub = self.create_publisher(String, <span class="s">"dock_goal"</span>, 10)
+        self._last_goal = <span class="k">None</span>
+
+    <span class="k">def</span> _on_battery(self, msg):
+        self.battery = <span class="k">float</span>(msg.data)      <span class="c"># local sensor: mine alone</span>
+
+    <span class="k">def</span> tick(self):
+        <span class="c"># intent from LOCAL facts + SHARED state -> proposals, nothing else.</span>
+        <span class="c"># Never assume a proposal succeeded: keep proposing until the</span>
+        <span class="c"># folded state shows it (duplicates fold as no-ops).</span>
+        mine = self.state.dock_of(self.me)
+        <span class="k">if</span> self.battery &lt; 0.20 <span class="k">and</span> mine <span class="k">is</span> <span class="k">None</span>:
+            free = [d <span class="k">for</span> d <span class="k">in</span> DOCKS <span class="k">if</span> d <span class="k">not</span> <span class="k">in</span> self.state.occupied]
+            <span class="k">if</span> free:
+                self.propose({<span class="s">"op"</span>: <span class="s">"claim"</span>,
+                              <span class="s">"robot"</span>: self.me, <span class="s">"dock"</span>: free[0]})
+        <span class="k">elif</span> self.battery &gt; 0.95 <span class="k">and</span> mine <span class="k">is</span> <span class="k">not</span> <span class="k">None</span>:
+            self.propose({<span class="s">"op"</span>: <span class="s">"release"</span>,
+                          <span class="s">"robot"</span>: self.me, <span class="s">"dock"</span>: mine})
+
+    <span class="k">def</span> on_state_changed(self):
+        <span class="c"># the ONLY place behavior follows from: the folded shared state.</span>
+        <span class="c"># Hand the goal to your own navigation (Nav2 action, etc.).</span>
+        goal = self.state.dock_of(self.me)
+        <span class="k">if</span> goal != self._last_goal:
+            self._last_goal = goal
+            self._goal_pub.publish(String(data=goal <span class="k">or</span> <span class="s">"none"</span>))
+
+
+<span class="k">def</span> main():
+    spin_agent(DockAgent)
+</pre></div>
+<div class="note">If your state needs ROS parameters to construct (dock list from a param, for example), pass <code>state=None</code> to <code>super().__init__</code> and assign <code>self.state</code> right after: no callback runs before spinning. The route-exploration simulation in the repository does exactly this.</div>
+
+<h2 id="s4"><span class="stepno">Step 4</span>Package it</h2>
+<p>Your package is a normal ament_python package that depends on <code>vertex_fleet</code>. Nothing special:</p>
+<div class="code"><span class="lang">xml — my_fleet/package.xml (the relevant lines)</span><button class="copy">Copy</button><pre>
+&lt;buildtool_depend&gt;ament_python&lt;/buildtool_depend&gt;
+&lt;exec_depend&gt;rclpy&lt;/exec_depend&gt;
+&lt;exec_depend&gt;std_msgs&lt;/exec_depend&gt;
+&lt;exec_depend&gt;vertex_fleet&lt;/exec_depend&gt;
+</pre></div>
+<div class="code"><span class="lang">python — my_fleet/setup.py (the relevant lines)</span><button class="copy">Copy</button><pre>
+entry_points={
+    <span class="s">"console_scripts"</span>: [
+        <span class="s">"dock_agent = my_fleet.dock_agent:main"</span>,
+    ],
+},
+</pre></div>
+<p>Drop the package into <code>src/</code> next to tessera, build, and <code>ros2 run my_fleet dock_agent</code> exists.</p>
+
+<h2 id="s5"><span class="stepno">Step 5</span>Launch the fleet</h2>
+<p>Per robot: one <code>vertex_node</code> with the contract topics remapped into the robot's namespace, plus your agent in the same namespace. The relative topics (<code>vertex/tx</code>, <code>vertex/event</code>, <code>battery_level</code>, <code>dock_goal</code>) all resolve under it:</p>
+<div class="code"><span class="lang">python — my_fleet/launch/fleet.launch.py</span><button class="copy">Copy</button><pre>
+<span class="k">import</span> json
+<span class="k">from</span> launch <span class="k">import</span> LaunchDescription
+<span class="k">from</span> launch_ros.actions <span class="k">import</span> Node
+
+peers = json.load(<span class="k">open</span>(<span class="s">"peers.json"</span>))
+
+<span class="k">def</span> generate_launch_description():
+    actions = []
+    <span class="k">for</span> i, me <span class="k">in</span> <span class="k">enumerate</span>(peers):
+        ns = <span class="s">f"/r{i}"</span>
+        others = [p <span class="k">for</span> j, p <span class="k">in</span> <span class="k">enumerate</span>(peers) <span class="k">if</span> j != i]
+        actions.append(Node(
+            package=<span class="s">"vertex_ros2"</span>, executable=<span class="s">"vertex_node"</span>, name=<span class="s">f"vertex{i}"</span>,
+            remappings=[(<span class="s">f"/vertex/{t}"</span>, <span class="s">f"{ns}/vertex/{t}"</span>)
+                        <span class="k">for</span> t <span class="k">in</span> (<span class="s">"tx"</span>, <span class="s">"event"</span>, <span class="s">"sync_point"</span>,
+                                  <span class="s">"status"</span>, <span class="s">"transition"</span>)]
+                      + [(<span class="s">"/vertex/lifecycle/state"</span>,
+                          <span class="s">f"{ns}/vertex/lifecycle/state"</span>)],
+            parameters=[{
+                <span class="s">"vertex.bind_address"</span>: me[<span class="s">"addr"</span>],
+                <span class="s">"vertex.secret_key_base58"</span>: me[<span class="s">"secret"</span>],
+                <span class="s">"vertex.peers"</span>: [<span class="s">f"{p['public']}@{p['addr']}"</span> <span class="k">for</span> p <span class="k">in</span> others],
+                <span class="s">"options.heartbeat_us"</span>: 50000,
+            }],
+        ))
+        actions.append(Node(
+            package=<span class="s">"my_fleet"</span>, executable=<span class="s">"dock_agent"</span>,
+            name=<span class="s">"dock_agent"</span>, namespace=ns,
+            parameters=[{<span class="s">"robot_name"</span>: <span class="s">f"r{i}"</span>}],
+        ))
+    <span class="k">return</span> LaunchDescription(actions)
+</pre></div>
+<p>The agents bring their engines to Active on their own. Watch it work by faking a low battery on one robot:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+ros2 topic pub --once /r0/battery_level std_msgs/msg/Float32 <span class="s">"{data: 0.1}"</span>
+ros2 topic echo /r0/dock_goal      <span class="c"># -> "dock_a" once the claim finalizes</span>
+ros2 topic echo /r1/dock_goal      <span class="c"># r1 sees r0's claim too: shared state</span>
+</pre></div>
+<p>Size the fleet for the faults you must survive: the quorum rule is <code>n ≥ 3f + 1</code>, so three robots tolerate none and <strong>four robots is the smallest fleet that keeps working with one crashed</strong>.</p>
+
+<h2 id="s6"><span class="stepno">Step 6</span>Test it</h2>
+<p>Two test shapes cover almost everything, and both have ready templates in the repository.</p>
+<p><strong>Unit: determinism of your fold.</strong> Pure Python, no ROS, runs anywhere. Feed the same log to several instances and assert they agree, then feed the hostile cases: duplicates, stale epochs, conflicting claims:</p>
+<div class="code"><span class="lang">python — test/test_dock_state.py</span><button class="copy">Copy</button><pre>
+<span class="k">def</span> test_conflicting_claims_one_winner_everywhere():
+    log = [{<span class="s">"op"</span>: <span class="s">"claim"</span>, <span class="s">"robot"</span>: <span class="s">"r0"</span>, <span class="s">"dock"</span>: <span class="s">"dock_a"</span>, <span class="s">"epoch"</span>: 0},
+           {<span class="s">"op"</span>: <span class="s">"claim"</span>, <span class="s">"robot"</span>: <span class="s">"r1"</span>, <span class="s">"dock"</span>: <span class="s">"dock_a"</span>, <span class="s">"epoch"</span>: 0}]
+    fleet = [DockState() <span class="k">for</span> _ <span class="k">in</span> <span class="k">range</span>(4)]
+    <span class="k">for</span> s <span class="k">in</span> fleet:
+        <span class="k">for</span> rec <span class="k">in</span> log:
+            s.apply(rec)
+    <span class="k">assert</span> <span class="k">all</span>(s.occupied == {<span class="s">"dock_a"</span>: <span class="s">"r0"</span>} <span class="k">for</span> s <span class="k">in</span> fleet)
+</pre></div>
+<p><strong>Integration: real consensus, launch_testing.</strong> Start real <code>vertex_node</code> peers and your agents, drive the scenario, and assert two things: the outcome (the allocation you expect) and the transport guarantee underneath (byte-identical <code>/vertex/event</code> streams across robots). Copy <code>vertex_fleet/test/ledger_demo.launch_test.py</code> and swap in your topics; it is exactly this shape, kept green in CI.</p>
+
+<h2 id="rules">The rules that keep fleets convergent</h2>
+<p>The library enforces the structural ones. The rest are yours to keep, and each has drawn blood in the flagship simulation, so treat the war stories as free experience:</p>
+<ol>
+  <li><strong>The fold is sacred.</strong> Pure, idempotent, no clocks, no randomness, no I/O. One stray <code>random()</code> in <code>apply_record</code> and your robots silently diverge. Randomness belongs on the proposal side (which dock to try), never in the fold.</li>
+  <li><strong>Propose, then wait.</strong> A proposal takes effect only when it returns finalized. Act on <code>self.state</code>, never on what you just proposed. Re-proposing while waiting is free because your fold is idempotent.</li>
+  <li><strong>First in the log wins.</strong> Never negotiate, never retry-with-backoff-and-priority. Conflicts resolve by finalized order, identically everywhere, at zero protocol cost.</li>
+  <li><strong>Gate physical evidence to what it is evidence of.</strong> Two real bugs, same disease: an arrival check that tested only "past the goal line" credited a robot's assigned route when the world shoved it down a different one, and a latched barrier flag from an old route got charged to a robot's new target within one tick, poisoning an open route for the whole fleet. Sensor facts are only valid for the target they were sensed against, and only if they postdate the assignment.</li>
+  <li><strong>Reflexes stay local.</strong> Collision avoidance, safety stops, and motion control cannot wait for a consensus round trip. Keep them in the robot, deterministic, and out of the log.</li>
+  <li><strong>Design recovery as epochs.</strong> A restarted process is a new participant and does not relearn missed decisions. Do not build resume-where-I-left-off; build <code>propose_reset(epoch + 1)</code> and make starting over cheap.</li>
+  <li><strong>Lease what a robot can hold.</strong> A crashed robot cannot release its dock. Let any robot propose a timeout for a holding that has shown no progress past a lease window; make the release a checked no-op if the holder already moved on. The simulation's fault-injection test is the worked example.</li>
+</ol>
+
+<h2 id="checklist">Integration checklist</h2>
+<p class="kicker">Ticks persist while this page is open.</p>
+<ul class="checklist">
+  <li><input type="checkbox" id="q1"><label for="q1">Records designed: minimal verbs, every record carries what the fold needs to be idempotent</label></li>
+  <li><input type="checkbox" id="q2"><label for="q2">State class: wipe + apply_record, pure, conflicts resolved by log order</label></li>
+  <li><input type="checkbox" id="q3"><label for="q3">Determinism unit tests pass, including duplicates and stale epochs</label></li>
+  <li><input type="checkbox" id="q4"><label for="q4">Agent: intent in tick, reaction in on_state_changed, sensors never write state</label></li>
+  <li><input type="checkbox" id="q5"><label for="q5">Package depends on vertex_fleet, agent installed as an entry point</label></li>
+  <li><input type="checkbox" id="q6"><label for="q6">Launch: one namespaced vertex_node per robot, peers wired, agent alongside</label></li>
+  <li><input type="checkbox" id="q7"><label for="q7">Fleet sized n ≥ 3f + 1 for the faults it must survive</label></li>
+  <li><input type="checkbox" id="q8"><label for="q8">Integration test asserts the outcome and byte-identical event streams</label></li>
+  <li><input type="checkbox" id="q9"><label for="q9">Physical evidence gated to its target; recovery designed as reset epochs</label></li>
+</ul>
+
+<h2 id="next">Going further</h2>
+<div class="tablewrap"><table>
+  <tr><th>Read next</th><th>Why</th></tr>
+  <tr><td><code>vertex_fleet/vertex_fleet/examples/ledger_agent.py</code></td><td>the smallest complete consumer, with its launch_test as your integration-test template</td></tr>
+  <tr><td><code>vertex_ros2/test/simulation/</code></td><td>the full-scale consumer: a four-robot physical fleet on the same two base classes, with leases, resets, fault injection, and a randomized mission soak</td></tr>
+  <tr><td><code>CONSUMING.md</code>, <code>vertex_ros2/README.md</code></td><td>setup reference and the raw engine contract (topics, parameters, lifecycle)</td></tr>
+  <tr><td>the companion tutorials</td><td>protocol design in depth (Volume 1) and non-ROS embeddings (Volume 3)</td></tr>
+</table></div>
+
+<footer>Volume 2 of 3. I wrote this against vertex_fleet as shipped in tessera v0.1.0. Every API call shown (ReplicatedState, VertexAgent, propose, propose_reset, spin_agent, the hook names) matches the shipped code, and the two test shapes mirror the suites that run in CI.</footer>
+</main>
+</div>
+
+<script>
+// copy buttons
+document.querySelectorAll('.code').forEach(block => {
+  const btn = block.querySelector('.copy');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    navigator.clipboard.writeText(block.querySelector('pre').innerText.trim()).then(() => {
+      btn.textContent = 'Copied';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+    });
+  });
+});
+
+// scroll spy
+const links = [...document.querySelectorAll('nav a')];
+const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+const spy = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
+  });
+}, { rootMargin: '-10% 0px -75% 0px' });
+targets.forEach(t => spy.observe(t));
+
+// ---------- fold sandbox ----------
+(function () {
+  const DOCKS = ['dock_a', 'dock_b'];
+  const RCOLOR = { r0: 'var(--r0)', r1: 'var(--r1)', r2: 'var(--r2)' };
+  let log = [];   // {rec, seq}
+  let seq = 0;
+
+  // the exact DockState fold, in JS, with the library's epoch/reset base
+  function fold(records) {
+    const s = { epoch: 0, occupied: {} };
+    const applied = [];
+    for (const r of records) {
+      let did = false;
+      if (r.op === 'reset') {
+        if ((r.epoch || 0) > s.epoch) { s.epoch = r.epoch; s.occupied = {}; did = true; }
+      } else if ((r.epoch || 0) === s.epoch) {
+        if (r.op === 'claim') {
+          if (DOCKS.includes(r.dock) && !(r.dock in s.occupied)
+              && !Object.values(s.occupied).includes(r.robot)) {
+            s.occupied[r.dock] = r.robot; did = true;
+          }
+        } else if (r.op === 'release') {
+          if (s.occupied[r.dock] === r.robot) { delete s.occupied[r.dock]; did = true; }
+        }
+      }
+      applied.push(did);
+    }
+    return { s, applied };
+  }
+
+  function fp(s) {
+    const j = JSON.stringify({ e: s.epoch, o: s.occupied });
+    let h = 5381;
+    for (let i = 0; i < j.length; i++) h = ((h << 5) + h + j.charCodeAt(i)) >>> 0;
+    return h.toString(16).padStart(8, '0').slice(0, 6);
+  }
+
+  const loglist = document.getElementById('loglist');
+  const statebox = document.getElementById('statebox');
+  const verdict = document.getElementById('sandverdict');
+  const toast = document.getElementById('toast');
+
+  function say(msg) { toast.textContent = msg; }
+
+  function render() {
+    const { s, applied } = fold(log.map(l => l.rec));
+    if (log.length === 0) {
+      loglist.innerHTML = '<span style="opacity:.6">log empty, append records below</span>';
+    } else {
+      loglist.innerHTML = log.map((l, i) => {
+        const r = l.rec;
+        const txt = r.op === 'reset'
+          ? `reset epoch=${r.epoch}`
+          : `${r.op} ${r.dock ?? ''} by ${r.robot ?? '?'} e${r.epoch}`;
+        return `<div class="${applied[i] ? 'applied' : 'noop'}">` +
+               `<span class="seq">#${String(l.seq).padStart(2, '0')}</span> ${txt}</div>`;
+      }).join('');
+      loglist.scrollTop = loglist.scrollHeight;
+    }
+    // three replicas fold the same log: same result, by construction
+    const fps = [0, 1, 2].map(() => fp(fold(log.map(l => l.rec)).s));
+    statebox.innerHTML =
+      `<b>Derived state</b> (epoch ${s.epoch})` +
+      DOCKS.map(d => {
+        const who = s.occupied[d];
+        return `<div class="dock"><span class="plug">\u{1F50C}</span> ${d}` +
+          (who ? `<span class="who" style="background:${RCOLOR[who] || 'var(--muted)'}">${who}</span>`
+               : `<span class="who free">free</span>`) + `</div>`;
+      }).join('') +
+      `<div class="fp">replica fingerprints: ${fps.join(' · ')}</div>`;
+    statebox.classList.remove('flash'); void statebox.offsetWidth;
+    statebox.classList.add('flash');
+    verdict.textContent = '✓ all replicas agree, always';
+  }
+
+  function curState() { return fold(log.map(l => l.rec)).s; }
+  function push(rec, msg) { log.push({ rec, seq: seq++ }); render(); if (msg) say(msg); }
+
+  document.getElementById('sandbtns').parentElement.parentElement
+    .addEventListener('click', e => {
+      const b = e.target.closest('button.act'); if (!b) return;
+      const a = b.dataset.a;
+      const s = curState();
+      if (a === 'claim') {
+        const robot = b.dataset.r;
+        if (Object.values(s.occupied).includes(robot)) { say(robot + ' already holds a dock: the fold would no-op a second claim.'); }
+        const free = DOCKS.find(d => !(d in s.occupied));
+        push({ op: 'claim', robot, dock: free || DOCKS[0], epoch: s.epoch },
+             free ? '' : 'No free dock: this claim folds as a no-op on every replica.');
+      } else if (a === 'release') {
+        const held = Object.entries(s.occupied)[0];
+        if (!held) { say('Nothing to release: append a claim first.'); return; }
+        push({ op: 'release', robot: held[1], dock: held[0], epoch: s.epoch });
+      } else if (a === 'dup') {
+        const last = log[log.length - 1];
+        if (!last) { say('Log is empty.'); return; }
+        push({ ...last.rec }, 'Duplicate folded as a no-op: idempotency is what makes re-proposing safe.');
+      } else if (a === 'stale') {
+        push({ op: 'claim', robot: 'r1', dock: DOCKS[0], epoch: s.epoch - 1 },
+             'Stale epoch: the base class ignored it before your fold ever saw it.');
+      } else if (a === 'steal') {
+        const taken = Object.keys(s.occupied)[0];
+        if (!taken) { say('No dock is occupied yet: claim one first, then try to steal it.'); return; }
+        push({ op: 'claim', robot: 'r2', dock: taken, epoch: s.epoch },
+             'First claim in the log won; the conflicting claim is a no-op everywhere.');
+      } else if (a === 'reset') {
+        push({ op: 'reset', epoch: s.epoch + 1 },
+             'Reset: every replica wiped and moved to the new epoch at the same log position.');
+      }
+    });
+
+  render();
+})();
+
+// ---------- agent assembly stepper ----------
+(function () {
+  // each line: [text, stepIntroduced]
+  const LINES = [
+    ['from std_msgs.msg import Float32, String', 0],
+    ['from vertex_fleet import VertexAgent, spin_agent', 0],
+    ['from my_fleet.dock_state import DOCKS, DockState', 0],
+    ['', 0],
+    ['class DockAgent(VertexAgent):', 0],
+    ['    def __init__(self):', 0],
+    ['        super().__init__("dock_agent", DockState())', 0],
+    ['        self.declare_parameter("robot_name", "r0")', 1],
+    ['        self.me = self.get_parameter("robot_name").value', 1],
+    ['        self.battery = 1.0', 1],
+    ['        self.create_subscription(Float32, "battery_level",', 1],
+    ['                                 self._on_battery, 10)', 1],
+    ['        self._goal_pub = self.create_publisher(String, "dock_goal", 10)', 1],
+    ['', 1],
+    ['    def _on_battery(self, msg):', 1],
+    ['        self.battery = float(msg.data)', 1],
+    ['', 2],
+    ['    def tick(self):', 2],
+    ['        mine = self.state.dock_of(self.me)', 2],
+    ['        if self.battery < 0.20 and mine is None:', 2],
+    ['            free = [d for d in DOCKS if d not in self.state.occupied]', 2],
+    ['            if free:', 2],
+    ['                self.propose({"op": "claim",', 2],
+    ['                              "robot": self.me, "dock": free[0]})', 2],
+    ['        elif self.battery > 0.95 and mine is not None:', 3],
+    ['            self.propose({"op": "release",', 3],
+    ['                          "robot": self.me, "dock": mine})', 3],
+    ['', 4],
+    ['    def on_state_changed(self):', 4],
+    ['        goal = self.state.dock_of(self.me)', 4],
+    ['        # hand `goal` to your navigation stack', 4],
+    ['', 5],
+    ['def main():', 5],
+    ['    spin_agent(DockAgent)', 5],
+  ];
+  const WHY = [
+    'Step 1 of 6. The skeleton: subclass VertexAgent, hand it your state. From this line on the library owns the consensus plumbing: it brings the robot’s vertex_node to Active, folds every finalized event into self.state, and stamps your proposals with the current epoch.',
+    'Step 2 of 6. Local identity and local sensors. The battery level is this robot’s private fact: it never enters the shared state directly. Sensors may only inform proposals.',
+    'Step 3 of 6. Intent in tick(): runs only while the engine is Active. Low battery and no dock held means propose a claim. Note what is missing: no lock, no request to a server, no assumption the claim worked. If another robot’s claim finalizes first, this one folds as a no-op and the next tick proposes a different free dock.',
+    'Step 4 of 6. The release follows the same shape: a proposal grounded in local facts (charged) and shared state (I hold a dock). Only the holder’s release folds, so a duplicate or a stale release from anyone else changes nothing.',
+    'Step 5 of 6. Reaction in on_state_changed(): the ONLY place behavior follows from. Whatever the fold says this robot holds becomes the navigation goal, whether that came from its own claim or from learning another robot released. State drives actuation; proposals never do.',
+    'Step 6 of 6. spin_agent handles init, spin, and clean SIGINT teardown. That is the whole agent: about forty lines, and every line either senses, proposes, or reacts.',
+  ];
+  let step = 0;
+  const MAX = 5;
+  const code = document.getElementById('stepcode');
+  const why = document.getElementById('stepwhy');
+  const prog = document.getElementById('stepprog');
+  const prev = document.getElementById('prevbtn');
+  const next = document.getElementById('nextbtn');
+
+  function esc(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function render() {
+    code.innerHTML = LINES
+      .filter(([, s]) => s <= step)
+      .map(([t, s]) => `<span class="${s === step ? 'add' : 'on'}">${esc(t) || ' '}</span>`)
+      .join('\n');
+    why.textContent = WHY[step];
+    prog.textContent = `step ${step + 1} of ${MAX + 1}`;
+    prev.disabled = step === 0;
+    next.disabled = step === MAX;
+  }
+  prev.addEventListener('click', () => { if (step > 0) { step--; render(); } });
+  next.addEventListener('click', () => { if (step < MAX) { step++; render(); } });
+  render();
+})();
+</script>
+
+</body>
+</html>

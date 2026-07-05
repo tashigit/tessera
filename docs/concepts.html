@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vertex consensus for ROS 2 — concepts and protocol design</title>
+<style>
+  :root {
+    --paper: #f6f7f6;
+    --ink: #1d2926;
+    --muted: #5c6b67;
+    --line: #dde3e0;
+    --accent: #0c6e5f;
+    --accent-soft: #e3efec;
+    --code-bg: #182320;
+    --code-ink: #d8e4df;
+    --code-dim: #7d938c;
+    --node0: #c94f4f;
+    --node1: #4f9e52;
+    --node2: #4a71c8;
+    --node3: #c99a35;
+    --good: #1a7f37;
+    --bad: #b3402f;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    --sans: "Avenir Next", "Segoe UI", -apple-system, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.65;
+  }
+  .wrap { display: flex; max-width: 1200px; margin: 0 auto; }
+
+  /* ---- sidebar ---- */
+  nav {
+    width: 232px; flex: none;
+    position: sticky; top: 0; align-self: flex-start;
+    max-height: 100vh; overflow-y: auto;
+    padding: 40px 20px 40px 28px;
+    font-family: var(--sans); font-size: 13px;
+    border-right: 1px solid var(--line);
+    box-sizing: border-box;
+  }
+  nav .brand {
+    font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    font-size: 11px; color: var(--accent); margin-bottom: 18px;
+  }
+  nav a {
+    display: block; color: var(--muted); text-decoration: none;
+    padding: 5px 8px; border-left: 2px solid transparent; margin-left: -10px;
+    line-height: 1.35;
+  }
+  nav a:hover { color: var(--ink); }
+  nav a:focus-visible { outline: 2px solid var(--accent); border-radius: 3px; }
+  nav a.on { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+  nav a.sub { padding-left: 20px; font-size: 12.5px; }
+
+  main { flex: 1; min-width: 0; padding: 48px 56px 120px; box-sizing: border-box; }
+  @media (max-width: 900px) {
+    nav { display: none; }
+    main { padding: 32px 20px 80px; }
+  }
+
+  /* ---- typography ---- */
+  header.doc h1 {
+    font-family: var(--sans); font-weight: 700; font-size: 34px;
+    line-height: 1.15; letter-spacing: -0.015em; margin: 8px 0 14px;
+    text-wrap: balance;
+  }
+  .eyebrow {
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent);
+  }
+  .lede { font-size: 19px; color: #374541; max-width: 62ch; }
+  h2 {
+    font-family: var(--sans); font-weight: 700; font-size: 24px;
+    letter-spacing: -0.01em; margin: 64px 0 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .stepno {
+    display: inline-block; font-size: 12px; font-weight: 600;
+    letter-spacing: .12em; color: var(--accent); text-transform: uppercase;
+    display: block; margin-bottom: 4px;
+  }
+  h3 { font-family: var(--sans); font-size: 17px; margin: 30px 0 6px; scroll-margin-top: 24px; }
+  p, ul, ol { max-width: 66ch; }
+  li { margin-bottom: 5px; }
+  a { color: var(--accent); }
+  strong { color: #12201c; }
+  .note {
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    background: var(--accent-soft); padding: 12px 16px; max-width: 62ch;
+    font-size: 15.5px; border-radius: 0 6px 6px 0; margin: 18px 0;
+  }
+  .warn { border-left-color: var(--node3); background: #f6efdd; }
+
+  /* ---- tables ---- */
+  .tablewrap { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; font-family: var(--sans); font-size: 14px; min-width: 560px; }
+  th { text-align: left; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  th, td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td code, p code, li code, .note code {
+    font-family: var(--mono); font-size: .85em; background: #e8ecea;
+    padding: 1px 5px; border-radius: 4px; white-space: nowrap;
+  }
+
+  /* ---- code blocks ---- */
+  .code {
+    position: relative; background: var(--code-bg); color: var(--code-ink);
+    border-radius: 8px; margin: 16px 0; font-size: 13.5px;
+  }
+  .code .lang {
+    position: absolute; top: 9px; left: 14px; font-family: var(--sans);
+    font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--code-dim);
+  }
+  .code button.copy {
+    position: absolute; top: 6px; right: 8px; font-family: var(--sans);
+    font-size: 11px; padding: 3px 10px; border-radius: 5px;
+    border: 1px solid #33443f; background: transparent; color: var(--code-dim); cursor: pointer;
+  }
+  .code button.copy:hover { color: var(--code-ink); border-color: var(--code-dim); }
+  .code button.copy:focus-visible { outline: 2px solid var(--accent); }
+  .code pre {
+    margin: 0; padding: 34px 18px 16px; overflow-x: auto;
+    font-family: var(--mono); line-height: 1.55;
+  }
+  .code .c  { color: #6f8a82; }   /* comment */
+  .code .k  { color: #8fd0bb; }   /* keyword-ish */
+  .code .s  { color: #d5b877; }   /* string */
+  .code .f  { color: #a8c3ea; }   /* field / flag */
+
+  /* ---- playground ---- */
+  .play {
+    border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 20px; margin: 22px 0; font-family: var(--sans);
+  }
+  .play h3 { margin: 0 0 2px; font-size: 16px; }
+  .play .sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; max-width: 70ch; }
+  .flight {
+    min-height: 40px; border: 1px dashed var(--line); border-radius: 8px;
+    display: flex; gap: 8px; align-items: center; padding: 6px 10px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    flex-wrap: wrap; margin-bottom: 14px;
+  }
+  .flight .tx {
+    padding: 2px 9px; border-radius: 999px; color: #fff; font-size: 11.5px;
+    animation: pulse 1s ease-in-out infinite alternate;
+  }
+  @keyframes pulse { from { opacity: .55; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .flight .tx { animation: none; } }
+  .nodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 12px; }
+  .nodecard { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfcfb; }
+  .nodecard.dead { opacity: .55; background: #f3f0ee; }
+  .nodecard .nh { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .nodecard .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .nodecard .nh b { font-size: 13.5px; }
+  .nodecard .fp {
+    margin-left: auto; font-family: var(--mono); font-size: 11px;
+    padding: 1px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--accent);
+  }
+  .nodecard .fp.diverged { background: #f4dcd6; color: var(--bad); }
+  .nodecard .st { font-size: 12px; color: var(--muted); line-height: 1.5; min-height: 54px; }
+  .nodecard .st b { color: var(--ink); font-weight: 600; }
+  .nodecard .log {
+    font-family: var(--mono); font-size: 10.5px; background: var(--code-bg);
+    color: var(--code-dim); border-radius: 6px; padding: 7px 9px; height: 92px;
+    overflow-y: auto; margin: 8px 0; line-height: 1.6;
+  }
+  .nodecard .log .seq { color: #55716a; }
+  .nodecard .log .me { color: var(--code-ink); }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+  .play button.act {
+    font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+    padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); cursor: pointer;
+  }
+  .play button.act:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .play button.act:disabled { opacity: .4; cursor: default; }
+  .play button.act:focus-visible { outline: 2px solid var(--accent); }
+  .play .global { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+  .play .global .verdict { font-size: 13px; margin-left: auto; font-weight: 600; }
+  .verdict.ok { color: var(--good); }
+  .verdict.no { color: var(--bad); }
+  .trylist { font-size: 13px; color: var(--muted); margin-top: 12px; max-width: none; }
+  .trylist li { margin-bottom: 3px; }
+
+  /* ---- checklist ---- */
+  .checklist { list-style: none; padding: 0; max-width: 70ch; font-family: var(--sans); font-size: 15px; }
+  .checklist li { display: flex; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); align-items: baseline; }
+  .checklist input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; transform: translateY(2px); }
+  .checklist label { cursor: pointer; }
+  .checklist input:checked + label { color: var(--muted); text-decoration: line-through; }
+
+  .kicker { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .series { font-family: var(--sans); font-size: 13px; border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 14px; margin: 18px 0; background: #fff; max-width: 62ch; }
+  .series b { color: var(--accent); }
+  .series a { text-decoration: none; }
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-family: var(--sans); font-size: 13px; color: var(--muted); max-width: 66ch; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav id="toc" aria-label="Contents">
+  <div class="brand">Tessera / Vertex</div>
+  <a href="#model">The mental model</a>
+  <a href="#playground" class="sub">Try the ordered log</a>
+  <a href="#design">Design before code</a>
+  <a href="#s1">1 · Workspace</a>
+  <a href="#s2">2 · Identities and peers</a>
+  <a href="#s3">3 · Launch the mesh</a>
+  <a href="#s4">4 · Lifecycle bring-up</a>
+  <a href="#s5">5 · Payload protocol</a>
+  <a href="#s6">6 · Replicated state machine</a>
+  <a href="#s7">7 · The application node</a>
+  <a href="#s8">8 · Testing</a>
+  <a href="#pitfalls">Pitfalls I hit</a>
+  <a href="#checklist">Integration checklist</a>
+  <a href="#map">Example code map</a>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">Tutorial · Volume 1 · Concepts and protocol design</div>
+  <h1>Vertex consensus for ROS&nbsp;2: concepts and protocol design</h1>
+  <p class="lede">This volume builds the mental model and the design skill: what the Tashi Vertex engine actually guarantees, how leaderless fleet coordination falls out of one ordered log, and how to design a correct application protocol before writing code. I use tessera's four-robot route-exploration simulation as the worked example. For implementation you then build on the <code>vertex_fleet</code> library, which is Volume&nbsp;2; this volume shows the library's concepts and, where useful, what it does underneath.</p>
+  <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;Concepts and protocol design (you are here) &nbsp;→&nbsp; 2&nbsp;·&nbsp;<a href="fleet-api.html">The fleet API</a> (build your integration) &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> (non-ROS embeddings and adapters). In a hurry? Start with Volume&nbsp;2 and return here when you design your own protocol.</div>
+  <p class="kicker">You need: ROS 2 Jazzy (or the tessera Docker harness), Rust, and access to the <code>tessera</code> and <code>tashi-vertex-rs</code> repositories.</p>
+</header>
+
+<h2 id="model">The mental model: one ordered log, everywhere</h2>
+<p>Tessera ships <code>vertex_node</code>, a ROS 2 node that wraps the Tashi Vertex engine (a hashgraph-family aBFT protocol: gossip about gossip plus virtual voting). You run one <code>vertex_node</code> per agent. Each binds a UDP socket and gossips peer to peer with the others.</p>
+<p>The contract is small and it is the whole point:</p>
+<ul>
+  <li>You publish opaque bytes to <code>/vertex/tx</code>. Vertex neither inspects nor interprets them.</li>
+  <li>Every peer receives the same finalized sequence of events on <code>/vertex/event</code>, byte for byte, in the same order.</li>
+</ul>
+<p>That is the entire integration surface. Your application never talks agent to agent. Each agent submits proposals into the log and folds the log into local state. Because every agent folds the <em>same</em> log with the <em>same</em> pure function, every agent derives the <em>same</em> state, and coordination falls out for free.</p>
+
+<div class="tablewrap"><table>
+  <tr><th>Interface</th><th>Type</th><th>Direction</th><th>Meaning</th></tr>
+  <tr><td><code>/vertex/tx</code></td><td><code>VertexTransaction</code></td><td>you → engine</td><td>submit opaque <code>payload</code> bytes</td></tr>
+  <tr><td><code>/vertex/event</code></td><td><code>VertexEvent</code></td><td>engine → you</td><td>finalized events in consensus order: <code>hash</code>, <code>transactions[]</code>, <code>consensus_at</code>, <code>created_at</code></td></tr>
+  <tr><td><code>/vertex/transition</code></td><td><code>VertexTransition</code> srv</td><td>you → engine</td><td>lifecycle: <code>configure / activate / deactivate / cleanup / shutdown</code></td></tr>
+  <tr><td><code>/vertex/status</code></td><td><code>VertexStatus</code> srv</td><td>you → engine</td><td>snapshot: running, peer count, tx and event counters, last error</td></tr>
+  <tr><td><code>/vertex/lifecycle/state</code></td><td>topic</td><td>engine → you</td><td>current lifecycle state</td></tr>
+</table></div>
+
+<h3 id="playground">Try it: the ordered log</h3>
+<p>Before writing any code, get the feel for the guarantee. The panel below simulates four agents (colored like the robots in the example simulation). Click <strong>Claim</strong> on two nodes quickly: both proposals enter the gossip layer, but only one wins the route, and every node agrees which one, because the finalized order is the same everywhere. The fingerprint under each node is a hash of its derived state.</p>
+
+<div class="play" id="pg">
+  <h3>Consensus playground</h3>
+  <div class="sub">Four agents claim exclusive routes through a shared log. Proposals shuffle in flight (network timing is not deterministic) but finalize in one order (consensus is). Crash a node that holds a route, then use the timeout that appears on the survivors to recover it, exactly like the lease in step 5.</div>
+  <div class="flight" id="flight"><span id="flightEmpty">in-flight proposals appear here</span></div>
+  <div class="nodes" id="nodes"></div>
+  <div class="global">
+    <button class="act" id="resetBtn">Reset epoch</button>
+    <span class="verdict" id="verdict"></span>
+  </div>
+  <ol class="trylist">
+    <li>Click <strong>Claim route</strong> on nodes 0 and 1 as fast as you can. One wins, three agree.</li>
+    <li>With a route assigned, click <strong>Report arrived</strong>: the winner route is fixed on every node.</li>
+    <li>Claim on node 2, then <strong>Crash</strong> it. Click <strong>Timeout dead route</strong> on a survivor: the route frees everywhere. Revive node 2 and note its log froze while it was down. Rejoining a running session is a separate upstream feature, which is why the real robots stay active across decisions they must act on.</li>
+  </ol>
+</div>
+
+<h2 id="design">Design before code: what goes through consensus</h2>
+<p>The one decision that shapes the whole integration: split your system into <strong>agreements</strong> and <strong>reflexes</strong>.</p>
+<ul>
+  <li><strong>Agreements go through Vertex.</strong> Anything two or more agents must see identically: task assignment, shared world knowledge, mission phase, restarts. In the example: who explores which route, which routes are blocked, which route won.</li>
+  <li><strong>Reflexes stay local.</strong> One agent's sensors, motion control, and safety behavior. In the example: waypoint following, stall detection, and bot-to-bot collision avoidance all run locally. A safety reflex cannot wait for a consensus round trip.</li>
+</ul>
+<p>Local facts still become shared truth, but only by being submitted and finalized. An agent detects "my route is blocked" with its own sensors, then publishes a <code>blocked</code> record. The fact exists for the fleet only once it appears in the log.</p>
+<p>Then size the fleet. Vertex is BFT with the standard quorum, so pick <code>n</code> for the faults you must survive:</p>
+<div class="tablewrap"><table>
+  <tr><th>Peers n</th><th>Faults tolerated f = ⌊(n−1)/3⌋</th><th>Notes</th></tr>
+  <tr><td>3</td><td>0</td><td>fine for development, no fault tolerance</td></tr>
+  <tr><td><strong>4</strong></td><td><strong>1</strong></td><td>smallest fleet that survives one crashed agent</td></tr>
+  <tr><td>7</td><td>2</td><td></td></tr>
+</table></div>
+
+<h2 id="s1"><span class="stepno">Step 1</span>Set up the workspace</h2>
+<p>Check out <code>tessera</code> and <code>tashi-vertex-rs</code> side by side. The Rust crate is a path dependency of tessera's <code>vertex_core</code>, so the sibling layout is required.</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+mkdir consensus-fleet &amp;&amp; cd consensus-fleet
+git clone git@github.com:tashigit/tessera.git
+git clone git@github.com:tashigit/tashi-vertex-rs.git
+</pre></div>
+<p>The fastest path to a working build is tessera's Docker harness. It gives you ROS 2 Jazzy, the ros2-rust toolchain, and cached colcon builds without touching your host:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+cd tessera
+docker compose build            <span class="c"># build the Jazzy environment image (once)</span>
+docker compose run --rm build   <span class="c"># colcon build vertex_ros2 inside the container</span>
+docker compose run --rm shell   <span class="c"># interactive shell with the env sourced</span>
+</pre></div>
+<p>On a native ROS 2 Jazzy install, build with colcon from a workspace that contains both checkouts under <code>src/</code>:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+colcon build --packages-up-to vertex_ros2 --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+</pre></div>
+<div class="note warn">On Linux the colcon-installed <code>vertex_node</code> has no rpath to <code>libtashi-vertex.so</code>. Find the library under your build tree and add its directory to <code>LD_LIBRARY_PATH</code> before launching. The harness does this in <code>docker/entrypoint.sh</code> (<code>export_tv_libpath</code>), which is worth copying.</div>
+
+<h2 id="s2"><span class="stepno">Step 2</span>Generate identities and a peers file</h2>
+<p>Every agent needs an Ed25519 keypair and a UDP bind address. The public keys are how peers authenticate each other. I keep them in one JSON file per deployment:</p>
+<div class="code"><span class="lang">json — peers.json</span><button class="copy">Copy</button><pre>
+[
+  {<span class="f">"secret"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"public"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"addr"</span>: <span class="s">"127.0.0.1:47611"</span>},
+  {<span class="f">"secret"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"public"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"addr"</span>: <span class="s">"127.0.0.1:47612"</span>},
+  {<span class="f">"secret"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"public"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"addr"</span>: <span class="s">"127.0.0.1:47613"</span>},
+  {<span class="f">"secret"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"public"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"addr"</span>: <span class="s">"127.0.0.1:47614"</span>}
+]
+</pre></div>
+<p>Generate keypairs with the <code>key-generate</code> example in <code>tashi-vertex-rs</code>. Tessera wraps it in ready-made scripts: <code>vertex_ros2/test/gen_test_keys.sh</code> emits three peers and <code>vertex_ros2/test/simulation/fixtures/gen_peers4.sh</code> emits four. Adapt either to your fleet size:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+( cd ../tashi-vertex-rs &amp;&amp; cargo run --quiet --example key-generate )
+<span class="c"># Secret: &lt;base58 secret key&gt;</span>
+<span class="c"># Public: &lt;base58 public key&gt;</span>
+</pre></div>
+<div class="note">For production, prefer <code>vertex.secret_key_path</code> (a file readable only by the node) over the inline <code>vertex.secret_key_base58</code> parameter. Test fixtures use the inline form because the keys are throwaway.</div>
+
+<h2 id="s3"><span class="stepno">Step 3</span>Launch the mesh</h2>
+<p>One <code>vertex_node</code> per agent, each configured with its own key and bind address plus everyone else's <code>pubkey@addr</code>. The contract topics are absolute (<code>/vertex/*</code>), so when several nodes share a machine or a ROS graph, remap them into per-agent namespaces. This launch pattern comes straight from the example and scales to any n:</p>
+<div class="code"><span class="lang">python — fleet.launch.py</span><button class="copy">Copy</button><pre>
+<span class="k">import</span> json
+<span class="k">from</span> launch <span class="k">import</span> LaunchDescription
+<span class="k">from</span> launch_ros.actions <span class="k">import</span> Node
+
+peers = json.load(<span class="k">open</span>(<span class="s">"peers.json"</span>))
+
+<span class="k">def</span> generate_launch_description():
+    actions = []
+    <span class="k">for</span> i, me <span class="k">in</span> <span class="k">enumerate</span>(peers):
+        ns = <span class="s">f"/agent_{i}"</span>
+        others = [p <span class="k">for</span> j, p <span class="k">in</span> <span class="k">enumerate</span>(peers) <span class="k">if</span> j != i]
+        actions.append(Node(
+            package=<span class="s">"vertex_ros2"</span>, executable=<span class="s">"vertex_node"</span>, name=<span class="s">f"vertex{i}"</span>,
+            remappings=[(<span class="s">f"/vertex/{t}"</span>, <span class="s">f"{ns}/vertex/{t}"</span>)
+                        <span class="k">for</span> t <span class="k">in</span> (<span class="s">"tx"</span>, <span class="s">"event"</span>, <span class="s">"sync_point"</span>, <span class="s">"status"</span>, <span class="s">"transition"</span>)]
+                      + [(<span class="s">"/vertex/lifecycle/state"</span>, <span class="s">f"{ns}/vertex/lifecycle/state"</span>)],
+            parameters=[{
+                <span class="s">"vertex.bind_address"</span>: me[<span class="s">"addr"</span>],
+                <span class="s">"vertex.secret_key_base58"</span>: me[<span class="s">"secret"</span>],
+                <span class="s">"vertex.peers"</span>: [<span class="s">f"{p['public']}@{p['addr']}"</span> <span class="k">for</span> p <span class="k">in</span> others],
+                <span class="s">"options.heartbeat_us"</span>: 50000,
+            }],
+        ))
+        <span class="c"># + your application node in the same namespace (step 7)</span>
+    <span class="k">return</span> LaunchDescription(actions)
+</pre></div>
+<p>The parameters you will actually touch:</p>
+<div class="tablewrap"><table>
+  <tr><th>Parameter</th><th>Purpose</th></tr>
+  <tr><td><code>vertex.bind_address</code></td><td>literal <code>IP:port</code> to bind, no DNS</td></tr>
+  <tr><td><code>vertex.secret_key_path</code> / <code>vertex.secret_key_base58</code></td><td>this node's identity (file form recommended)</td></tr>
+  <tr><td><code>vertex.peers</code></td><td>string array of <code>&lt;base58_pubkey&gt;@&lt;ip:port&gt;</code> for every other peer</td></tr>
+  <tr><td><code>options.heartbeat_us</code></td><td>engine heartbeat; 50000 works well for tests</td></tr>
+  <tr><td><code>vertex.joining_running_session</code></td><td>rejoin an in-flight session (upstream feature, off by default)</td></tr>
+  <tr><td><code>bridge.tx_channel_capacity</code> / <code>bridge.event_channel_capacity</code></td><td>ROS↔engine buffer bounds; overflow shows in <code>tx_rejected_total</code></td></tr>
+</table></div>
+
+<h2 id="s4"><span class="stepno">Step 4</span>Bring the nodes to Active</h2>
+<p><code>vertex_node</code> starts unconfigured and publishes nothing until it is driven through its lifecycle. Nothing appears on <code>/vertex/event</code> while a node is Inactive, which is itself part of the contract and is what the lifecycle tests assert. From a shell:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+ros2 service call /agent_0/vertex/transition vertex_ros2_msgs/srv/VertexTransition <span class="s">"{transition: configure}"</span>
+ros2 service call /agent_0/vertex/transition vertex_ros2_msgs/srv/VertexTransition <span class="s">"{transition: activate}"</span>
+</pre></div>
+<p>In a real deployment you do not do this by hand: a <code>vertex_fleet.VertexAgent</code> (Volume&nbsp;2) drives its own engine through configure and activate, retrying until the transition service is up and both verbs succeed, and holds your periodic logic back until the engine is Active. The shell commands above are what that bring-up does underneath, and they remain the right tool for poking a mesh interactively.</p>
+<p>Sanity check the mesh with <code>ros2 service call /agent_0/vertex/status vertex_ros2_msgs/srv/VertexStatus</code>: it reports <code>running</code>, <code>peer_count</code>, and submit/reject counters.</p>
+
+<h2 id="s5"><span class="stepno">Step 5</span>Define the payload protocol</h2>
+<p>Vertex moves opaque bytes, so the record format is entirely yours. Small JSON records work well and stay debuggable. The example's protocol is four route-exploration verbs plus three housekeeping ones, and its shape transfers to almost any task-allocation problem:</p>
+<div class="code"><span class="lang">jsonc — one record per transaction</span><button class="copy">Copy</button><pre>
+{ <span class="f">"op"</span>: <span class="s">"claim"</span>,   <span class="f">"bot"</span>: 2, <span class="f">"route"</span>: <span class="s">"R1"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// propose to take a task</span>
+{ <span class="f">"op"</span>: <span class="s">"blocked"</span>, <span class="f">"bot"</span>: 2, <span class="f">"route"</span>: <span class="s">"R1"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// my sensors say: task impossible</span>
+{ <span class="f">"op"</span>: <span class="s">"arrived"</span>, <span class="f">"bot"</span>: 1, <span class="f">"route"</span>: <span class="s">"R2"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// task proven done</span>
+{ <span class="f">"op"</span>: <span class="s">"timeout"</span>, <span class="f">"bot"</span>: 3, <span class="f">"victim"</span>: 2, <span class="f">"route"</span>: <span class="s">"R3"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// lease expiry</span>
+{ <span class="f">"op"</span>: <span class="s">"unblock_all"</span>, <span class="f">"bot"</span>: 3, <span class="f">"seq"</span>: 2, <span class="f">"epoch"</span>: 0 }   <span class="c">// world changed, shared facts stale</span>
+{ <span class="f">"op"</span>: <span class="s">"reset"</span>, <span class="f">"epoch"</span>: 1 }                            <span class="c">// wipe and restart the mission</span>
+</pre></div>
+<p>Four rules make a protocol like this correct under concurrency. They are the accumulated lessons of the example, so I recommend adopting all of them:</p>
+<ol>
+  <li><strong>First in the log wins.</strong> Never negotiate. When two agents claim the same task, the finalized order is the arbiter: the first claim is valid, the second is a no-op. Every conflict resolves this way, on every agent identically, with no extra messages.</li>
+  <li><strong>Every record is idempotent or a checked no-op.</strong> Multiple agents will propose the same thing concurrently (several survivors propose the same timeout, four coordinators relay the same reset). Applying a duplicate must change nothing.</li>
+  <li><strong>Carry an epoch.</strong> Stamp every record with the current epoch and ignore records from older epochs. A <code>reset</code> bumps the epoch. This makes restarts a single consensus point instead of a distributed cleanup problem.</li>
+  <li><strong>Lease anything an agent can hold.</strong> A crashed agent cannot release what it holds. Let any agent propose a <code>timeout</code> for an assignment that has produced no outcome within a lease window sized above the worst-case task time. The release restores progress; exclusivity was never at risk because the dead agent held the task alone.</li>
+</ol>
+<div class="note">Rules 1 and 2 are yours to design into the records. Rule 3's mechanics (epoch stamping on every proposal, epoch gating on every fold, reset handling) ship in <code>vertex_fleet</code>, so in Volume&nbsp;2 you inherit them rather than implement them.</div>
+
+<h2 id="s6"><span class="stepno">Step 6</span>The replicated state machine</h2>
+<p>This is the heart of the integration and it should be the most boring code you write: a pure fold from ordered records to state. No ROS imports, no I/O, no clocks, no randomness. Purity is what makes "same log in, same state out" testable on your laptop.</p>
+<p>You write it by subclassing <code>vertex_fleet.ReplicatedState</code>: the base owns epoch gating, <code>reset</code> handling, and the canonical record encoding, and your subclass folds only its own ops. This is the route-exploration protocol from §3, condensed (the shipped version is <code>mission_fsm.py</code> in the repository):</p>
+<div class="code"><span class="lang">python — fleet_state.py (pure, condensed from the simulation)</span><button class="copy">Copy</button><pre>
+<span class="k">from</span> vertex_fleet <span class="k">import</span> ReplicatedState
+
+<span class="k">class</span> FleetState(ReplicatedState):
+    <span class="k">def</span> __init__(self, tasks, num_agents):
+        self.tasks, self.n = <span class="k">list</span>(tasks), num_agents
+        <span class="k">super</span>().__init__()          <span class="c"># sets epoch = 0 and calls wipe()</span>
+
+    <span class="k">def</span> wipe(self):                 <span class="c"># construction and consensus `reset`</span>
+        self.assigned, self.blocked, self.arrived = {}, <span class="k">set</span>(), <span class="k">set</span>()
+        self.winner = <span class="k">None</span>
+
+    <span class="k">def</span> apply_record(self, rec):    <span class="c"># one same-epoch record, log order</span>
+        op, bot, task = rec[<span class="s">"op"</span>], rec.get(<span class="s">"bot"</span>), rec.get(<span class="s">"route"</span>)
+        <span class="k">if</span> op == <span class="s">"claim"</span>:           <span class="c"># first claim in the log wins</span>
+            <span class="k">if</span> (bot <span class="k">not</span> <span class="k">in</span> self.assigned <span class="k">and</span> bot <span class="k">not</span> <span class="k">in</span> self.arrived
+                    <span class="k">and</span> task <span class="k">in</span> self.tasks
+                    <span class="k">and</span> task <span class="k">not</span> <span class="k">in</span> self.assigned.values()
+                    <span class="k">and</span> (task <span class="k">not</span> <span class="k">in</span> self.blocked <span class="k">or</span> rec.get(<span class="s">"retry"</span>))):
+                self.assigned[bot] = task
+        <span class="k">elif</span> op == <span class="s">"blocked"</span>:
+            self.blocked.add(task)
+            <span class="k">if</span> task == self.winner: self.winner = <span class="k">None</span>
+            self.assigned = {b: t <span class="k">for</span> b, t <span class="k">in</span> self.assigned.items()
+                             <span class="k">if</span> b != bot <span class="k">and</span> t != task}
+        <span class="k">elif</span> op == <span class="s">"arrived"</span>:
+            self.arrived.add(bot); self.blocked.discard(task)
+            <span class="k">if</span> self.winner <span class="k">is</span> <span class="k">None</span>:
+                self.winner = task; self.assigned.clear()
+            self.assigned.pop(bot, <span class="k">None</span>)
+        <span class="k">elif</span> op == <span class="s">"timeout"</span>:       <span class="c"># lease: no-op unless still held</span>
+            <span class="k">if</span> self.assigned.get(rec.get(<span class="s">"victim"</span>)) == task:
+                <span class="k">del</span> self.assigned[rec[<span class="s">"victim"</span>]]
+
+    <span class="k">def</span> role(self, me):             <span class="c"># what should THIS agent do now</span>
+        <span class="k">if</span> me <span class="k">in</span> self.arrived: <span class="k">return</span> (<span class="s">"done"</span>, <span class="k">None</span>)
+        <span class="k">if</span> me <span class="k">in</span> self.assigned: <span class="k">return</span> (<span class="s">"work"</span>, self.assigned[me])
+        <span class="k">if</span> self.winner: <span class="k">return</span> (<span class="s">"converge"</span>, self.winner)
+        <span class="k">return</span> (<span class="s">"wait"</span>, <span class="k">None</span>)
+</pre></div>
+<div class="note"><strong>The one structural rule:</strong> this state must have a single mutation path, the consensus event callback. If any other input can change it, agents can diverge and the whole guarantee is gone. Sensors, timers, and services may read it and may <em>propose</em> records, never write it. <code>VertexAgent</code> enforces this by construction; keep it true in anything you add.</div>
+
+<h2 id="s7"><span class="stepno">Step 7</span>Wire the application node</h2>
+<p>The application node connects three things: the log (folded into state for you), your intent (proposals), and your actuators (act on the derived role). On <code>vertex_fleet.VertexAgent</code> that wiring is inherited: the event subscription, the epoch-stamped transaction publisher, the lifecycle bring-up, and the tick timer all come from the base, and what remains is exactly your application. The shipped <code>mission_coordinator</code> is this skeleton grown up:</p>
+<div class="code"><span class="lang">python — fleet_agent.py</span><button class="copy">Copy</button><pre>
+<span class="k">from</span> vertex_fleet <span class="k">import</span> VertexAgent, spin_agent
+<span class="k">from</span> fleet_state <span class="k">import</span> FleetState
+
+<span class="k">class</span> FleetAgent(VertexAgent):
+    <span class="k">def</span> __init__(self):
+        <span class="k">super</span>().__init__(<span class="s">"fleet_agent"</span>,
+                         FleetState(tasks=[<span class="s">"R1"</span>, <span class="s">"R2"</span>, <span class="s">"R3"</span>, <span class="s">"R4"</span>],
+                                    num_agents=4))
+        self.me = self.declare_parameter(<span class="s">"agent_id"</span>, 0).value
+
+    <span class="k">def</span> tick(self):                <span class="c"># local intent + local sensing -&gt; proposals;</span>
+                                   <span class="c"># runs only while the engine is Active</span>
+        role, task = self.state.role(self.me)
+        <span class="k">if</span> role == <span class="s">"wait"</span> <span class="k">and</span> (free := self.pick_free_task()):
+            self.propose({<span class="s">"op"</span>: <span class="s">"claim"</span>, <span class="s">"bot"</span>: self.me, <span class="s">"route"</span>: free})
+        <span class="k">if</span> role == <span class="s">"work"</span> <span class="k">and</span> self.task_done(task):
+            self.propose({<span class="s">"op"</span>: <span class="s">"arrived"</span>, <span class="s">"bot"</span>: self.me, <span class="s">"route"</span>: task})
+
+    <span class="k">def</span> on_state_changed(self):    <span class="c"># derived role -&gt; actuators, no negotiation</span>
+        role, task = self.state.role(self.me)
+        self.drive_toward(task) <span class="k">if</span> role <span class="k">in</span> (<span class="s">"work"</span>, <span class="s">"converge"</span>) <span class="k">else</span> self.hold()
+
+<span class="k">def</span> main():
+    spin_agent(FleetAgent)
+</pre></div>
+<p>Underneath, the base does what you would otherwise write by hand: a reliable subscription to <code>vertex/event</code> whose callback is the single place <code>self.state</code> mutates, a publisher on <code>vertex/tx</code> that stamps every proposal with the current epoch, and the configure-then-activate loop from step 4. Volume&nbsp;2 walks this assembly line by line; the raw wiring is in <code>vertex_fleet/vertex_fleet/agent.py</code> if you want to read it.</p>
+<p>Notice what <code>tick</code> does <em>not</em> do: it never assumes its own claim succeeded. It proposes and keeps waiting. The agent starts working only when its claim comes back through the consensus fold and <code>role()</code> says so. Here is that rule in a real trace from the example's consensus logs. The robot submits its claim, keeps waiting, and switches to explore only after the claim returns finalized, sequenced behind three other claims it also learned about:</p>
+<div class="code"><span class="lang">log — robot_0_consensus.log</span><button class="copy">Copy</button><pre>
+[345.921] TX     {'op': 'claim', 'bot': 0, 'route': 'R1', 'epoch': 0}
+[345.966] EVENT #6 hash=100295d9efdc records=[{'bot': 2, 'op': 'claim', 'route': 'R3', ...}]
+[345.983] EVENT #7 hash=f79d077b9771 records=[{'bot': 3, 'op': 'claim', 'route': 'R4', ...}]
+[345.985] EVENT #8 hash=4e314d2613f0 records=[{'bot': 1, 'op': 'claim', 'route': 'R2', ...}]
+[345.986] EVENT #9 hash=185db44816bd records=[{'bot': 0, 'op': 'claim', 'route': 'R1', ...}]
+[345.987] DECIDE role=explore target=R1 drive=R1
+</pre></div>
+
+<h2 id="s8"><span class="stepno">Step 8</span>Test at three layers</h2>
+<h3>Unit: determinism of the fold</h3>
+<p>Feed the same record log to N independent instances of your state machine and assert they agree. Plain Python, no ROS, runs anywhere (the <code>ReplicatedState</code> layer imports without ROS for exactly this reason). This is where protocol bugs die cheapest, and <code>vertex_fleet/test/test_state.py</code> in the repository is the template:</p>
+<div class="code"><span class="lang">python — test_fleet_state.py</span><button class="copy">Copy</button><pre>
+<span class="k">def</span> test_exclusive_assignment_and_agreement():
+    fleet = [FleetState([<span class="s">"R1"</span>, <span class="s">"R2"</span>, <span class="s">"R3"</span>, <span class="s">"R4"</span>], 4) <span class="k">for</span> _ <span class="k">in</span> <span class="k">range</span>(4)]
+    log = [{<span class="s">"op"</span>: <span class="s">"claim"</span>, <span class="s">"bot"</span>: 0, <span class="s">"route"</span>: <span class="s">"R1"</span>, <span class="s">"epoch"</span>: 0},
+           {<span class="s">"op"</span>: <span class="s">"claim"</span>, <span class="s">"bot"</span>: 1, <span class="s">"route"</span>: <span class="s">"R1"</span>, <span class="s">"epoch"</span>: 0}]   <span class="c"># conflict!</span>
+    <span class="k">for</span> f <span class="k">in</span> fleet:
+        <span class="k">for</span> rec <span class="k">in</span> log: f.apply(rec)
+    <span class="k">assert</span> <span class="k">all</span>(f.assigned == {0: <span class="s">"R1"</span>} <span class="k">for</span> f <span class="k">in</span> fleet)   <span class="c"># one winner, everywhere</span>
+</pre></div>
+<h3>Integration: real consensus, mock bodies</h3>
+<p>Use <code>launch_testing</code> to start real <code>vertex_node</code> peers, your application nodes, and a mock in place of the physical layer (the example's <code>mock_robot.py</code> is 100 lines: it turns drive commands into pose updates). Assert the outcomes, not the timing: everyone finishes, everyone agrees, no task was ever held twice. Then add the assertion that catches everything else, byte-identical event streams:</p>
+<div class="code"><span class="lang">python — inside the launch_test</span><button class="copy">Copy</button><pre>
+<span class="c"># collect (hash, payloads) per node from /agent_i/vertex/event, then:</span>
+min_len = <span class="k">min</span>(<span class="k">len</span>(events[i]) <span class="k">for</span> i <span class="k">in</span> <span class="k">range</span>(n))
+<span class="k">for</span> idx <span class="k">in</span> <span class="k">range</span>(min_len):
+    <span class="k">for</span> i <span class="k">in</span> <span class="k">range</span>(1, n):
+        <span class="k">assert</span> events[0][idx] == events[i][idx]   <span class="c"># the total-order guarantee</span>
+</pre></div>
+<h3>Adversarial: kill things</h3>
+<p>The example ships three tests worth copying wholesale, each about 200 lines:</p>
+<ul>
+  <li><strong>Fault injection</strong> (<code>fault_injection.launch_test.py</code>): make the victim's task the only viable one, SIGKILL its engine, coordinator, and mock mid-task, and assert the survivors lease-timeout the task, re-claim it, and finish with byte-identical streams. With n=4 this proves f=1 for real.</li>
+  <li><strong>Lifecycle churn</strong> (<code>lifecycle_churn.launch_test.py</code>): deactivate one engine mid-mission, force traffic, assert zero publishes on its <code>/vertex/event</code> while Inactive, reactivate, and finish.</li>
+  <li><strong>Soak</strong> (<code>soak_missions.launch_test.py</code>): randomized back-to-back missions restarted through <code>reset</code> epochs, asserting every mission terminates consistently and engine RSS stays bounded.</li>
+</ul>
+<p>Wire the fast ones into CI on every push and keep the soak nightly. The example's <code>sim-test</code> job in <code>.github/workflows/ci.yml</code> is a working template.</p>
+
+<h2 id="pitfalls">Pitfalls I hit so you don't have to</h2>
+<ul>
+  <li><strong>Acting before finalization.</strong> If an agent starts working the moment it publishes a claim, two agents can work the same task until the log catches up. Propose, then wait for your own record to come back.</li>
+  <li><strong>Letting physical facts lie.</strong> My arrival check originally tested only "past the goal line". A world change shoved a robot down a different lane and it credited its assigned route with a phantom arrival, poisoning the shared state. Gate every self-reported fact on evidence it is the fact you claim (in the example: also on the claimed route's row).</li>
+  <li><strong>Routing reflexes through the log.</strong> Collision avoidance through consensus adds a round trip you cannot afford at reflex speed. Keep safety local and deterministic. In the example the bots exchange poses on a sim-local radio and break ties by agent id.</li>
+  <li><strong>Flooding side channels.</strong> High-rate sensor streams sharing a transport with your command path will starve it. My pose feed once delayed drive commands by minutes. Throttle telemetry, and keep the consensus path on its own dedicated topics.</li>
+  <li><strong>Assuming a restarted node catches up.</strong> Vertex orders what a node observes while participating. A node that was down during decisions does not relearn them on rejoin unless you build state transfer (upstream: <code>vertex.joining_running_session</code>). Design so restarted agents either do not need missed events or get reset into a fresh epoch.</li>
+  <li><strong>Non-determinism creeping into the fold.</strong> A single <code>random()</code>, clock read, or dict-iteration dependence inside <code>apply()</code> and your agents silently diverge. Keep randomness in the proposal side (which task to <em>try</em> claiming), never in the fold.</li>
+</ul>
+
+<h2 id="checklist">Integration checklist</h2>
+<p class="kicker">Ticks persist while this page is open.</p>
+<ul class="checklist" id="cklist">
+  <li><input type="checkbox" id="c1"><label for="c1">Split the design: agreements through Vertex, reflexes local</label></li>
+  <li><input type="checkbox" id="c2"><label for="c2">Fleet sized for the faults I must survive (n ≥ 3f + 1)</label></li>
+  <li><input type="checkbox" id="c3"><label for="c3">Workspace builds: tessera + tashi-vertex-rs siblings, colcon or Docker harness</label></li>
+  <li><input type="checkbox" id="c4"><label for="c4">Keypairs generated, peers file written, secrets in files not parameters</label></li>
+  <li><input type="checkbox" id="c5"><label for="c5">One vertex_node per agent, contract topics remapped per namespace</label></li>
+  <li><input type="checkbox" id="c6"><label for="c6">Lifecycle bring-up inherited from VertexAgent (or automated yourself on the raw path)</label></li>
+  <li><input type="checkbox" id="c7"><label for="c7">Payload protocol: first-wins, idempotent records, epochs, leases</label></li>
+  <li><input type="checkbox" id="c8"><label for="c8">Pure state machine on ReplicatedState, single mutation path preserved</label></li>
+  <li><input type="checkbox" id="c9"><label for="c9">Agents propose and wait, never assume their own proposal succeeded</label></li>
+  <li><input type="checkbox" id="c10"><label for="c10">Determinism unit tests pass (same log, N instances, identical state)</label></li>
+  <li><input type="checkbox" id="c11"><label for="c11">Integration test with real engines asserts byte-identical event streams</label></li>
+  <li><input type="checkbox" id="c12"><label for="c12">Fault injection, lifecycle churn, and soak tests wired into CI</label></li>
+</ul>
+
+<h2 id="map">Where everything lives in the example</h2>
+<p>The route-exploration simulation is a complete, working instance of this tutorial inside the tessera repository:</p>
+<div class="tablewrap"><table>
+  <tr><th>Concern</th><th>Path in tessera</th></tr>
+  <tr><td>Test plan and architecture</td><td><code>vertex_ros2/test/simulation/README.md</code></td></tr>
+  <tr><td>The consumer library (ReplicatedState, VertexAgent)</td><td><code>vertex_fleet/vertex_fleet/{state,agent}.py</code></td></tr>
+  <tr><td>Pure replicated state machine + unit tests</td><td><code>.../nodes/mission_fsm.py</code>, <code>test_mission_fsm.py</code></td></tr>
+  <tr><td>Application node on the library (intent, evidence gates, lease)</td><td><code>.../nodes/mission_coordinator.py</code></td></tr>
+  <tr><td>The minimal consumer template</td><td><code>vertex_fleet/vertex_fleet/examples/ledger_agent.py</code></td></tr>
+  <tr><td>Fleet launch (per-agent vertex_node + remaps)</td><td><code>.../route_exploration.launch.py</code></td></tr>
+  <tr><td>Mock physical layer for headless tests</td><td><code>.../nodes/mock_robot.py</code></td></tr>
+  <tr><td>Integration, fault, churn, soak tests</td><td><code>.../ *.launch_test.py</code></td></tr>
+  <tr><td>Consensus-proof tooling for live runs</td><td><code>.../nodes/verify_consensus_logs.py</code></td></tr>
+  <tr><td>Key generation</td><td><code>vertex_ros2/test/gen_test_keys.sh</code>, <code>.../fixtures/gen_peers4.sh</code></td></tr>
+  <tr><td>Docker harness and CI</td><td><code>docker/entrypoint.sh</code>, <code>.github/workflows/ci.yml</code></td></tr>
+  <tr><td>Engine contract (topics, params, lifecycle)</td><td><code>vertex_ros2/README.md</code></td></tr>
+</table></div>
+
+<footer>Volume 1 of 3. I wrote this against tessera v0.1.0 (vertex_ros2 and vertex_fleet). The engine contract (topics, message types, parameters, lifecycle verbs) is fixed by design. Check <code>vertex_ros2/README.md</code> in your checkout for anything version-specific.</footer>
+</main>
+</div>
+
+<script>
+// ---------- copy buttons ----------
+document.querySelectorAll('.code').forEach(block => {
+  const btn = block.querySelector('.copy');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const text = block.querySelector('pre').innerText.trim();
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+    });
+  });
+});
+
+// ---------- scroll spy ----------
+const links = [...document.querySelectorAll('nav a')];
+const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+const spy = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
+  });
+}, { rootMargin: '-10% 0px -75% 0px' });
+targets.forEach(t => spy.observe(t));
+
+// ---------- consensus playground ----------
+(function () {
+  const N = 4, ROUTES = ['R1', 'R2', 'R3', 'R4'];
+  const COLORS = ['var(--node0)', 'var(--node1)', 'var(--node2)', 'var(--node3)'];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let log = [];                 // finalized records, the single shared truth
+  let crashed = [false, false, false, false];
+  let received = [0, 0, 0, 0];  // how much of the log each node has folded
+  let seq = 0;
+
+  function fold(upto) {         // the same pure reducer every node runs
+    const s = { epoch: 0, assigned: {}, blocked: new Set(), arrived: new Set(), winner: null };
+    for (let i = 0; i < upto; i++) {
+      const r = log[i];
+      if (r.op === 'reset') {
+        if (r.epoch > s.epoch) { s.epoch = r.epoch; s.assigned = {}; s.blocked = new Set(); s.arrived = new Set(); s.winner = null; }
+        continue;
+      }
+      if ((r.epoch || 0) !== s.epoch) continue;
+      if (r.op === 'claim') {
+        if (!(r.bot in s.assigned) && !s.arrived.has(r.bot) &&
+            !Object.values(s.assigned).includes(r.route) && !s.blocked.has(r.route)) {
+          s.assigned[r.bot] = r.route;
+        }
+      } else if (r.op === 'blocked') {
+        s.blocked.add(r.route);
+        if (s.winner === r.route) s.winner = null;
+        for (const b of Object.keys(s.assigned)) {
+          if (+b === r.bot || s.assigned[b] === r.route) delete s.assigned[b];
+        }
+      } else if (r.op === 'arrived') {
+        s.arrived.add(r.bot); s.blocked.delete(r.route);
+        if (s.winner === null) { s.winner = r.route; s.assigned = {}; }
+        delete s.assigned[r.bot];
+      } else if (r.op === 'timeout') {
+        if (s.assigned[r.victim] === r.route) delete s.assigned[r.victim];
+      }
+    }
+    return s;
+  }
+
+  function fingerprint(s) {     // djb2 over the canonical state
+    const j = JSON.stringify({ e: s.epoch, a: s.assigned, b: [...s.blocked].sort(),
+                               v: [...s.arrived].sort(), w: s.winner });
+    let h = 5381;
+    for (let i = 0; i < j.length; i++) h = ((h << 5) + h + j.charCodeAt(i)) >>> 0;
+    return h.toString(16).padStart(8, '0').slice(0, 6);
+  }
+
+  const flight = document.getElementById('flight');
+  const flightEmpty = document.getElementById('flightEmpty');
+  const nodesEl = document.getElementById('nodes');
+  const verdict = document.getElementById('verdict');
+
+  function submit(from, rec) {
+    if (crashed[from]) return;
+    const chip = document.createElement('span');
+    chip.className = 'tx';
+    chip.style.background = COLORS[from];
+    chip.textContent = rec.op + (rec.route ? ' ' + rec.route : '') + ' ·n' + from;
+    flightEmpty.style.display = 'none';
+    flight.appendChild(chip);
+    const delay = reduced ? 60 : 500 + Math.random() * 900;   // network jitter
+    setTimeout(() => {
+      chip.remove();
+      if (![...flight.children].some(c => c.classList && c.classList.contains('tx'))) {
+        flightEmpty.style.display = '';
+      }
+      log.push({ ...rec, seq: seq++ });                        // FINALIZED: one order
+      for (let i = 0; i < N; i++) if (!crashed[i]) received[i] = log.length;
+      render();
+    }, delay);
+  }
+
+  function currentEpoch() { return fold(log.length).epoch; }
+
+  function render() {
+    const full = fold(log.length);
+    nodesEl.innerHTML = '';
+    const fps = [];
+    for (let i = 0; i < N; i++) {
+      const s = fold(received[i]);
+      const fp = fingerprint(s);
+      if (!crashed[i]) fps.push(fp);
+      const mine = s.assigned[i];
+      const card = document.createElement('div');
+      card.className = 'nodecard' + (crashed[i] ? ' dead' : '');
+      const logHtml = log.slice(0, received[i]).slice(-14).map(r =>
+        `<div><span class="seq">#${String(r.seq).padStart(2, '0')}</span> ` +
+        `<span class="${r.bot === i ? 'me' : ''}">${r.op}${r.route ? ' ' + r.route : ''}` +
+        `${r.op === 'timeout' ? ' (bot ' + r.victim + ')' : r.bot !== undefined ? ' bot' + r.bot : ''}</span></div>`
+      ).join('') || '<div>log empty</div>';
+
+      const deadHolders = Object.entries(s.assigned).filter(([b]) => crashed[+b]);
+      let buttons = '';
+      if (crashed[i]) {
+        buttons = `<button class="act" data-act="revive" data-n="${i}">Revive</button>`;
+      } else {
+        const free = ROUTES.find(r => !Object.values(s.assigned).includes(r) && !s.blocked.has(r));
+        buttons =
+          `<button class="act" data-act="claim" data-n="${i}" ${(!free || mine || s.arrived.has(i) || s.winner) ? 'disabled' : ''}>Claim route</button>` +
+          `<button class="act" data-act="blocked" data-n="${i}" ${mine ? '' : 'disabled'}>Report blocked</button>` +
+          `<button class="act" data-act="arrived" data-n="${i}" ${(mine || (s.winner && !s.arrived.has(i))) ? '' : 'disabled'}>Report arrived</button>` +
+          (deadHolders.length
+            ? `<button class="act" data-act="timeout" data-n="${i}">Timeout dead route</button>` : '') +
+          `<button class="act" data-act="crash" data-n="${i}">Crash</button>`;
+      }
+      card.innerHTML =
+        `<div class="nh"><span class="dot" style="background:${COLORS[i]}"></span><b>node ${i}</b>` +
+        `<span class="fp" data-fp="${fp}">${crashed[i] ? 'offline' : fp}</span></div>` +
+        `<div class="st">epoch <b>${s.epoch}</b> · holds <b>${mine || 'nothing'}</b><br>` +
+        `blocked: <b>${[...s.blocked].join(', ') || 'none'}</b><br>` +
+        `winner: <b>${s.winner || 'undecided'}</b> · arrived: <b>${[...s.arrived].sort().join(', ') || 'none'}</b></div>` +
+        `<div class="log">${logHtml}</div>` +
+        `<div class="btnrow">${buttons}</div>`;
+      nodesEl.appendChild(card);
+    }
+    const agree = fps.length > 0 && fps.every(f => f === fps[0]);
+    verdict.textContent = fps.length
+      ? (agree ? '✓ all live nodes derive identical state' : '✗ divergence (this should never happen)')
+      : 'all nodes offline';
+    verdict.className = 'verdict ' + (agree ? 'ok' : 'no');
+    nodesEl.querySelectorAll('.fp').forEach(el => {
+      if (el.textContent !== 'offline') el.classList.toggle('diverged', !agree);
+    });
+  }
+
+  nodesEl.addEventListener('click', e => {
+    const b = e.target.closest('button.act');
+    if (!b) return;
+    const i = +b.dataset.n, act = b.dataset.act;
+    const s = fold(received[i]);
+    const ep = currentEpoch();
+    if (act === 'claim') {
+      const free = ROUTES.filter(r => !Object.values(s.assigned).includes(r) && !s.blocked.has(r));
+      const preferred = free.includes(ROUTES[i]) ? ROUTES[i] : free[0];
+      if (preferred) submit(i, { op: 'claim', bot: i, route: preferred, epoch: ep });
+    } else if (act === 'blocked' && s.assigned[i]) {
+      submit(i, { op: 'blocked', bot: i, route: s.assigned[i], epoch: ep });
+    } else if (act === 'arrived') {
+      const target = s.assigned[i] || s.winner;
+      if (target) submit(i, { op: 'arrived', bot: i, route: target, epoch: ep });
+    } else if (act === 'timeout') {
+      const dead = Object.entries(s.assigned).find(([b2]) => crashed[+b2]);
+      if (dead) submit(i, { op: 'timeout', bot: i, victim: +dead[0], route: dead[1], epoch: ep });
+    } else if (act === 'crash') {
+      crashed[i] = true; render();
+    } else if (act === 'revive') {
+      crashed[i] = false; render();   // log stays frozen at received[i]: no catch-up
+    }
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    const alive = crashed.findIndex(c => !c);
+    if (alive >= 0) submit(alive, { op: 'reset', epoch: currentEpoch() + 1 });
+  });
+
+  render();
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tessera — Vertex consensus for ROS 2: documentation</title>
+<style>
+  :root {
+    --paper: #f7f7f6;
+    --ink: #212722;
+    --muted: #5f6a63;
+    --line: #dfe3df;
+    --v1: #0c6e5f;
+    --v2: #96551c;
+    --v3: #2b5d8a;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    --sans: "Avenir Next", "Segoe UI", -apple-system, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.65; }
+  main { max-width: 880px; margin: 0 auto; padding: 64px 24px 100px; }
+  .eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-family: var(--sans); font-weight: 700; font-size: 36px;
+    line-height: 1.12; letter-spacing: -0.015em; margin: 8px 0 14px; text-wrap: balance; }
+  .lede { font-size: 19px; color: #3a443d; max-width: 62ch; }
+  h2 { font-family: var(--sans); font-weight: 700; font-size: 22px; margin: 52px 0 12px; }
+  p { max-width: 66ch; }
+  a { color: inherit; }
+  code { font-family: var(--mono); font-size: .85em; background: #e9ece9;
+    padding: 1px 5px; border-radius: 4px; }
+  .vols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px; margin: 20px 0; }
+  .vol { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 18px 18px 16px; text-decoration: none; display: block;
+    border-top: 3px solid var(--acc); }
+  .vol:hover { border-color: var(--acc); }
+  .vol:focus-visible { outline: 2px solid var(--acc); }
+  .vol .n { font-family: var(--sans); font-size: 11px; font-weight: 600;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--acc); }
+  .vol h3 { font-family: var(--sans); font-size: 17px; margin: 6px 0 6px; color: var(--ink); }
+  .vol p { font-size: 14px; color: var(--muted); margin: 0; font-family: var(--sans); }
+  .order { font-family: var(--sans); font-size: 14px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    padding: 12px 16px; max-width: 66ch; }
+  ul.res { font-family: var(--sans); font-size: 15px; padding-left: 20px; max-width: 70ch; }
+  ul.res li { margin-bottom: 7px; }
+  footer { margin-top: 72px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-family: var(--sans); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Tessera documentation</div>
+  <h1>Vertex consensus for ROS&nbsp;2</h1>
+  <p class="lede">Tessera integrates the Tashi Vertex engine, a hashgraph-based BFT consensus, into ROS&nbsp;2: every robot submits opaque bytes and every robot receives the same totally-ordered, finalized stream back. Fleets coordinate with no leader, no server, and tolerance of <code>f</code> faulty robots in a fleet of <code>3f&nbsp;+&nbsp;1</code>. These tutorials take you from the mental model to a shipping integration.</p>
+
+  <h2>The tutorial series</h2>
+  <div class="vols">
+    <a class="vol" style="--acc: var(--v1)" href="concepts.html">
+      <span class="n">Volume 1</span>
+      <h3>Concepts and protocol design</h3>
+      <p>The ordered-log mental model (with an interactive playground) and how to design records, leases, and recovery for your own fleet protocol.</p>
+    </a>
+    <a class="vol" style="--acc: var(--v2)" href="fleet-api.html">
+      <span class="n">Volume 2</span>
+      <h3>The fleet API</h3>
+      <p>Build your integration on <code>vertex_fleet</code>: two base classes, one launch pattern. A complete charging-dock allocation example, a live fold sandbox, and a step-by-step agent builder.</p>
+    </a>
+    <a class="vol" style="--acc: var(--v3)" href="crate-level.html">
+      <span class="n">Volume 3</span>
+      <h3>Crate-level internals</h3>
+      <p>Embed <code>vertex_core</code> in plain Rust with no ROS, or write an adapter for another middleware. The concurrency contract, build plumbing, and tests.</p>
+    </a>
+  </div>
+  <div class="order"><b>Reading order.</b> Study 1&nbsp;→&nbsp;2&nbsp;→&nbsp;3. In a hurry? Volume&nbsp;2 stands alone: start there and return to Volume&nbsp;1 when you design a protocol of your own. Volume&nbsp;3 is only for processes that cannot be ROS&nbsp;2 nodes.</div>
+
+  <h2>The worked example: a consensus-coordinated robot fleet</h2>
+  <p>The repository ships a complete reference application used throughout the tutorials: four simulated robots exploring routes to a goal, coordinating exclusively through consensus. It demonstrates exclusive task claims, blocked-task recovery, winner convergence, lease timeouts for crashed robots, and fleet-wide resets, all built on the same <code>vertex_fleet</code> API you will use, and all covered by tests that run in CI, including fault injection and a randomized mission soak.</p>
+  <ul class="res">
+    <li><a href="https://github.com/tashigit/tessera/tree/main/vertex_ros2/test/simulation">The simulation</a> — architecture, protocol, worlds, and the full test matrix (<code>vertex_ros2/test/simulation/</code>)</li>
+    <li><a href="https://github.com/tashigit/tessera/tree/main/vertex_fleet">The vertex_fleet library</a> — the base classes and the minimal ledger example (<code>vertex_fleet/</code>)</li>
+    <li><a href="https://github.com/tashigit/tessera/blob/main/CONSUMING.md">CONSUMING.md</a> — workspace setup, build, first mesh, first agent</li>
+    <li><a href="https://github.com/tashigit/tessera/blob/main/vertex_ros2/README.md">Engine contract reference</a> — topics, message types, parameters, lifecycle</li>
+  </ul>
+
+  <footer>Tessera v0.1.0 · Apache-2.0. The name: a tessera is a single tile in a mosaic; each consensus event is one ordered tile, and together they form the agreed history.</footer>
+</main>
+</body>
+</html>
