@@ -42,56 +42,47 @@ Transaction payloads are opaque JSON records (all carry `epoch` for reset):
 
 from __future__ import annotations
 
-import json
+import os
+import sys
+
+# The state builds on the vertex_fleet library (the consumer API this
+# simulation exercises end to end). When run straight from the source tree on
+# a host without the workspace installed, resolve the package by path.
+try:
+    from vertex_fleet.state import ReplicatedState, decode, encode
+except ImportError:                                    # pragma: no cover
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "..", "vertex_fleet"))
+    from vertex_fleet.state import ReplicatedState, decode, encode
+
+__all__ = ["MissionState", "encode", "decode",
+           "EXPLORING", "CONVERGING", "DONE"]
 
 # mission phase
 EXPLORING, CONVERGING, DONE = "exploring", "converging", "done"
 
 
-def encode(record: dict) -> bytes:
-    """Serialize a record to the opaque bytes carried in VertexTransaction.payload."""
-    return json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8")
-
-
-def decode(payload) -> dict | None:
-    """Decode transaction payload bytes back to a record, or None if malformed."""
-    try:
-        return json.loads(bytes(payload).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
-        return None
-
-
-class MissionState:
-    """Deterministic fold of the consensus-ordered record stream."""
+class MissionState(ReplicatedState):
+    """Deterministic fold of the consensus-ordered record stream. Epoch gating
+    and `reset` handling come from vertex_fleet.ReplicatedState; this class
+    folds the mission ops."""
 
     def __init__(self, routes, num_bots=4):
         self.routes = list(routes)
         self.num_bots = num_bots
-        self.epoch = 0            # bumped by `reset`; stale-epoch records are ignored
-        self._reset_state()
+        super().__init__()        # sets epoch = 0 and calls wipe()
 
-    def _reset_state(self) -> None:
+    def wipe(self) -> None:
         self.arrived: set[int] = set()     # bots that reached the end (stay there)
         self.blocked: set[str] = set()     # routes reported blocked
         self.winner_route = None           # first proven-open route
         self.assigned: dict[int, str] = {} # bot -> route, exclusive (consensus order)
         self.phase = EXPLORING
 
-    # ---- fold one record (consensus order) ----
-    def apply(self, rec: dict | None) -> None:
-        if not rec or "op" not in rec:
-            return
+    # ---- fold one same-epoch record (consensus order) ----
+    def apply_record(self, rec: dict) -> None:
         op = rec["op"]
-
-        if op == "reset":                  # restart at a fresh epoch (first one wins)
-            e = rec.get("epoch", 0)
-            if e > self.epoch:
-                self._reset_state()
-                self.epoch = e
-            return
-        if rec.get("epoch", 0) != self.epoch:
-            return                         # stale record from a previous epoch
-
         bot, route = rec.get("bot"), rec.get("route")
         if op == "claim":
             # Exclusive assignment, first claim in consensus order wins the route.

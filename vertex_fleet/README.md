@@ -10,6 +10,11 @@ repository root.
 | `vertex_fleet.agent` | `VertexAgent`: base node wiring an agent to its `vertex_node` (lifecycle bring-up, single-mutation-path event fold, epoch-stamped `propose`), and the `spin_agent` main helper |
 | `vertex_fleet.examples.ledger_state` / `ledger_agent` | the minimal worked application: a replicated append-only ledger. Copy this pair (pure state module, thin node module) as the starting shape for a new app |
 
+Two consumers ship in this repository: the ledger example (minimal) and the
+route-exploration simulation (`vertex_ros2/test/simulation/`), whose
+`mission_fsm.py` / `mission_coordinator.py` build the full robot-fleet
+scenario on this library. Read the ledger first, the simulation second.
+
 Tests:
 
 ```bash

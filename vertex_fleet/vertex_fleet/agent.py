@@ -21,7 +21,13 @@ Subclass, pass a ReplicatedState to ``__init__``, and override:
 
     tick()               periodic hook, called only while the engine is
                          Active; read self.state, call self.propose(...)
-    on_state_changed()   called after each consensus event is folded
+    on_event(msg)        called after each consensus event is folded, with
+                         the raw VertexEvent (hash, timestamps, transactions)
+    on_state_changed()   called after on_event; the state-level hook
+
+A state whose construction needs ROS parameters cannot exist before the node
+does. Pass ``state=None`` and assign ``self.state`` right after
+``super().__init__(...)``, before spinning; no callback runs until then.
 """
 
 from __future__ import annotations
@@ -38,10 +44,10 @@ from .state import ReplicatedState, decode, encode
 
 
 class VertexAgent(Node):
-    def __init__(self, node_name: str, state: ReplicatedState,
+    def __init__(self, node_name: str, state: ReplicatedState | None,
                  tick_period_sec: float = 0.2):
         super().__init__(node_name)
-        self.state = state
+        self.state = state          # may be assigned by the subclass pre-spin
         self._event_count = 0
 
         reliable = QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE)
@@ -89,6 +95,11 @@ class VertexAgent(Node):
     def tick(self) -> None:
         """Periodic hook, called only while the engine is Active."""
 
+    def on_event(self, msg) -> None:
+        """Called after each consensus event is folded, with the raw
+        VertexEvent (hash, consensus_at, transactions). For logging and
+        telemetry; state mutation already happened."""
+
     def on_state_changed(self) -> None:
         """Called after every consensus event has been folded into state."""
 
@@ -99,6 +110,7 @@ class VertexAgent(Node):
         for tx in msg.transactions:
             self.state.apply(decode(tx.payload))
         self._event_count += 1
+        self.on_event(msg)
         self.on_state_changed()
 
     def _on_timer(self) -> None:
