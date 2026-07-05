@@ -136,8 +136,10 @@ fleet at a fresh epoch through consensus.
 
 The complete worked example is the replicated ledger:
 `vertex_fleet/vertex_fleet/examples/ledger_agent.py`, with its launch and
-assertions in `vertex_fleet/test/ledger_demo.launch_test.py`. Run it against
-real consensus in the harness:
+assertions in `vertex_fleet/test/ledger_demo.launch_test.py`. The full-scale
+consumer is the route-exploration simulation
+(`vertex_ros2/test/simulation/`): a four-robot fleet built on the same two
+base classes. Run the ledger against real consensus in the harness:
 
 ```bash
 docker compose run --rm test          # includes the ledger integration test

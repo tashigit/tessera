@@ -1,47 +1,52 @@
 #!/usr/bin/env python3
-"""mission_coordinator — one per robot; the ROS 2 wrapper around mission_fsm
-(PARALLEL model: all bots move concurrently, consensus assigns routes
-exclusively; see mission_fsm.py and worlds/README.md).
+"""mission_coordinator — one per robot; the mission logic on top of the
+vertex_fleet consumer API (PARALLEL model: all bots move concurrently,
+consensus assigns routes exclusively; see mission_fsm.py and worlds/README.md).
+
+Built on vertex_fleet.VertexAgent, which provides the engine lifecycle
+bring-up, the single-mutation-path fold of /vertex/event into MissionState,
+and epoch-stamped proposals. This node adds what is mission-specific:
 
   subscribes
-    /vertex/event      vertex_ros2_msgs/VertexEvent   consensus-ordered log
     pose               geometry_msgs/PointStamped     from waypoint_follower (GPS)
     barrier            std_msgs/Bool                  in-lane progress stalled?
     /reset             std_msgs/Int32                 Supervisor reset control
+    /world_changed     std_msgs/Int32                 Supervisor barrier changes
   publishes
-    /vertex/tx         vertex_ros2_msgs/VertexTransaction   claim/blocked/arrived/
-                                                            timeout/unblock_all/reset
     drive              std_msgs/String                route id | STAGING | STOP
     mission_state      std_msgs/String (JSON)         for the launch_test
 
-Decision logic lives in mission_fsm; this node adds the physical triggers
-(arrival / barrier) and the claim loop: while unassigned it claims a free route
-(own home lane first) every claim_interval; when everything is blocked it
-re-claims a blocked route with retry=true so a user-reopened route is found.
-Physical collision safety is the follower's proximity guard — consensus only
-guarantees route exclusivity.
+Physical triggers (arrival on the claimed route's row / barrier stall), the
+claim loop (home lane first, retry when everything is blocked), the lease
+timeout for dead explorers, and the per-node consensus log that
+verify_consensus_logs.py diffs across bots. Physical collision safety is the
+follower's job; consensus only guarantees route exclusivity.
 """
 
 import json
 import os
 import random
-
-import rclpy
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy
+import sys
 
 from geometry_msgs.msg import PointStamped
 from std_msgs.msg import Bool, Int32, String
-from vertex_ros2_msgs.msg import VertexEvent, VertexTransaction
-from vertex_ros2_msgs.srv import VertexTransition
 
-from mission_fsm import DONE, EXPLORING, MissionState, decode, encode
+from mission_fsm import EXPLORING, MissionState, decode
+
+try:
+    from vertex_fleet import VertexAgent, spin_agent
+except ImportError:                                    # pragma: no cover
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..", "..", "vertex_fleet"))
+    from vertex_fleet import VertexAgent, spin_agent
 
 
-class MissionCoordinator(Node):
+class MissionCoordinator(VertexAgent):
     def __init__(self):
-        super().__init__("mission_coordinator")
+        # State construction needs ROS parameters, so it is attached right
+        # after the node exists and before spinning (see VertexAgent docs).
+        super().__init__("mission_coordinator", state=None, tick_period_sec=0.2)
         self.declare_parameter("robot_id", 0)
         self.declare_parameter("routes", ["R1", "R2", "R3", "R4"])
         # lane row per route, same order as `routes` (mirrors config/routes.yaml);
@@ -75,7 +80,7 @@ class MissionCoordinator(Node):
         # home lane: bot i <-> routes[i] (straight-out departure, no lane change)
         self.home_route = self.routes[self.my_id] if self.my_id < len(self.routes) else None
 
-        self.fsm = MissionState(self.routes, num_bots=self.num_bots)
+        self.state = MissionState(self.routes, num_bots=self.num_bots)
         self.pose_x = -4.0
         self.pose_y = 0.0
         self.barrier_ahead = False
@@ -88,7 +93,6 @@ class MissionCoordinator(Node):
         self._world_seen = 0             # last /world_changed seq relayed
         self._winner_seen = None         # when this node learned the winner
         self._last_decision = None       # last logged (role, target) pair
-        self._ev_count = 0               # consensus events delivered to this node
         self._assign_seen = {}           # (bot, route) -> Time it entered the log
         self._timeout_sent = set()       # (epoch, bot, route) timeouts I proposed
 
@@ -103,12 +107,9 @@ class MissionCoordinator(Node):
                           "a", buffering=1)
         self._flog(f"=== mission_coordinator start (robot_id={self.my_id}) ===")
 
-        reliable = QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE)
-        self.tx_pub = self.create_publisher(VertexTransaction, "vertex/tx", reliable)
         self.drive_pub = self.create_publisher(String, "drive", 10)
         self.state_pub = self.create_publisher(String, "mission_state", 10)
 
-        self.create_subscription(VertexEvent, "vertex/event", self._on_event, reliable)
         self.create_subscription(PointStamped, "pose", self._on_pose, 10)
         self.create_subscription(Bool, "barrier", self._on_barrier, 10)
         self.create_subscription(Int32, "/reset", self._on_reset, 10)
@@ -117,12 +118,6 @@ class MissionCoordinator(Node):
         # fleet re-opens exploration at the same consensus point.
         self.create_subscription(Int32, "/world_changed", self._on_world_changed, 10)
 
-        # bring our own vertex_node to Active via the lifecycle control plane
-        self.lifecycle = "init"
-        self._transition_pending = False
-        self.transition_cli = self.create_client(VertexTransition, "vertex/transition")
-
-        self.create_timer(0.2, self._tick)
         self.get_logger().info(
             f"mission_coordinator up: robot_id={self.my_id} routes={self.routes} "
             f"home={self.home_route}")
@@ -132,33 +127,33 @@ class MissionCoordinator(Node):
         t = self.get_clock().now().nanoseconds / 1e9
         self._logf.write(f"[{t:.3f}] {line}\n")
 
-    # ---- inputs ----
-    def _on_event(self, msg: VertexEvent):
+    # ---- consensus hooks (folding is done by VertexAgent) ----
+    def on_event(self, msg):
         h = bytes(msg.hash).hex()[:12]
         recs = [decode(tx.payload) for tx in msg.transactions]
-        self._ev_count += 1
-        self._flog(f"EVENT #{self._ev_count} hash={h} "
+        self._flog(f"EVENT #{self.events_folded} hash={h} "
                    f"records={[r for r in recs if r]}")
-        for rec in recs:
-            self.fsm.apply(rec)
-        self._flog(f"STATE  blocked={sorted(self.fsm.blocked)} "
-                   f"assigned={dict(sorted(self.fsm.assigned.items()))} "
-                   f"arrived={sorted(self.fsm.arrived)} "
-                   f"winner={self.fsm.winner_route} phase={self.fsm.phase}")
-        if self.fsm.phase == "converging" and self._winner_seen is None:
+        self._flog(f"STATE  blocked={sorted(self.state.blocked)} "
+                   f"assigned={dict(sorted(self.state.assigned.items()))} "
+                   f"arrived={sorted(self.state.arrived)} "
+                   f"winner={self.state.winner_route} phase={self.state.phase}")
+
+    def on_state_changed(self):
+        if self.state.phase == "converging" and self._winner_seen is None:
             self._winner_seen = self.get_clock().now()
-        elif self.fsm.phase != "converging":
+        elif self.state.phase != "converging":
             self._winner_seen = None
         # lease bookkeeping: start a clock when an assignment enters the log,
         # drop it when the assignment resolves (blocked/arrived/timeout/reset)
         now = self.get_clock().now()
-        cur = set(self.fsm.assigned.items())
+        cur = set(self.state.assigned.items())
         for pair in cur - set(self._assign_seen):
             self._assign_seen[pair] = now
         for pair in set(self._assign_seen) - cur:
             del self._assign_seen[pair]
         self._react()
 
+    # ---- inputs ----
     def _on_pose(self, msg: PointStamped):
         self.pose_x = msg.point.x
         self.pose_y = msg.point.y
@@ -166,23 +161,19 @@ class MissionCoordinator(Node):
     def _on_barrier(self, msg: Bool):
         self.barrier_ahead = msg.data
 
-    # ---- emit a transaction (stamped with the current epoch) ----
+    # ---- emit a transaction (epoch-stamped by VertexAgent.propose) ----
     def _emit(self, record: dict):
-        record = {**record, "epoch": self.fsm.epoch}
-        tx = VertexTransaction()
-        tx.payload = list(encode(record))
-        self.tx_pub.publish(tx)
-        self.get_logger().info(f"tx -> {record}")
-        self._flog(f"TX     {record}")
+        stamped = {**record, "epoch": self.state.epoch}
+        self.propose(record)
+        self.get_logger().info(f"tx -> {stamped}")
+        self._flog(f"TX     {stamped}")
 
     # ---- reset control: relay the Supervisor's reset into the ordered log ----
     def _on_reset(self, msg: Int32):
         e = int(msg.data)
         if e > self._reset_seen:
             self._reset_seen = e
-            tx = VertexTransaction()
-            tx.payload = list(encode({"op": "reset", "epoch": e}))
-            self.tx_pub.publish(tx)
+            self.propose_reset(e)
             self.get_logger().info(f"tx -> reset epoch {e}")
             self._flog(f"TX     reset epoch {e}")
 
@@ -193,46 +184,9 @@ class MissionCoordinator(Node):
             self._world_seen = n
             self._emit({"op": "unblock_all", "bot": self.my_id, "seq": n})
 
-    # ---- bring up our vertex_node (configure -> activate) ----
-    def _send_transition(self, verb, on_ok):
-        if self._transition_pending:
-            return
-        self._transition_pending = True
-        req = VertexTransition.Request()
-        req.transition = verb
-
-        def _done(fut):
-            self._transition_pending = False
-            res = fut.result()
-            if res is not None and res.success:
-                on_ok()
-            else:
-                self.get_logger().warn(f"{verb} rejected: "
-                                       f"{getattr(res, 'message', 'timeout')}")
-
-        self.transition_cli.call_async(req).add_done_callback(_done)
-
-    def _bringup(self) -> bool:
-        if self.lifecycle == "running":
-            return True
-        if not self.transition_cli.service_is_ready():
-            return False
-        if self.lifecycle == "init":
-            self.lifecycle = "configuring"
-            self._send_transition("configure",
-                                  lambda: setattr(self, "lifecycle", "inactive"))
-        elif self.lifecycle == "inactive":
-            self.lifecycle = "activating"
-            self._send_transition("activate",
-                                  lambda: setattr(self, "lifecycle", "running"))
-        return False
-
-    # ---- periodic: claims + physical outcome reports ----
-    def _tick(self):
-        if not self._bringup():
-            self.drive_pub.publish(String(data="STAGING"))
-            return
-        role, target = self.fsm.role(self.my_id)
+    # ---- periodic: claims + physical outcome reports (engine is Active) ----
+    def tick(self):
+        role, target = self.state.role(self.my_id)
         now = self.get_clock().now()
 
         # a fresh assignment must be reportable even if the same route was
@@ -246,7 +200,7 @@ class MissionCoordinator(Node):
         #    route by a barrier flip mid-push) and must not credit its assigned
         #    route with a phantom `arrived` — that poisons the shared state.
         if role in ("explore", "converge") and target is not None:
-            key = (self.fsm.epoch, target)
+            key = (self.state.epoch, target)
             if self._reported_for != key:
                 row = self.lane_y.get(target)
                 on_row = row is None or abs(self.pose_y - row) < 0.5
@@ -266,7 +220,7 @@ class MissionCoordinator(Node):
                 continue
             if (now - since).nanoseconds / 1e9 < self.lease_sec:
                 continue
-            key = (self.fsm.epoch, bot, route)
+            key = (self.state.epoch, bot, route)
             if key in self._timeout_sent:
                 continue
             self._timeout_sent.add(key)
@@ -277,8 +231,8 @@ class MissionCoordinator(Node):
         #    (home lane first). All bots do this concurrently; consensus order
         #    arbitrates — losers just claim again. When nothing is claimable for
         #    retry_after seconds, re-claim a blocked route (recovery).
-        if self.fsm.phase == EXPLORING and self.my_id not in self.fsm.arrived \
-                and self.my_id not in self.fsm.assigned:
+        if self.state.phase == EXPLORING and self.my_id not in self.state.arrived \
+                and self.my_id not in self.state.assigned:
             if (now - self._last_claim).nanoseconds / 1e9 >= self.claim_interval:
                 route, retry = self._pick_route(now)
                 if route is not None:
@@ -298,13 +252,13 @@ class MissionCoordinator(Node):
         still exploring) — while any bot is still out there, a winner may land
         and everyone converges; re-probing known-blocked barriers meanwhile just
         drives bots back into walls."""
-        avail = self.fsm.claimable_routes()
+        avail = self.state.claimable_routes()
         if avail:
             self._unclaimable_since = None
             if self.home_route in avail:
                 return self.home_route, False
             return (random.choice(avail) if self.random_routes else avail[0]), False
-        if self.fsm.assigned:               # someone is still exploring: wait
+        if self.state.assigned:             # someone is still exploring: wait
             self._unclaimable_since = None
             return None, False
         if self._unclaimable_since is None:
@@ -312,14 +266,14 @@ class MissionCoordinator(Node):
             return None, False
         if (now - self._unclaimable_since).nanoseconds / 1e9 < self.retry_after:
             return None, False
-        pool = self.fsm.retryable_routes()
+        pool = self.state.retryable_routes()
         if not pool:
             return None, False
         return (random.choice(pool) if self.random_routes else pool[0]), True
 
-    # ---- translate FSM role into a drive command + publish state ----
+    # ---- translate the FSM role into a drive command + publish state ----
     def _react(self):
-        role, target = self.fsm.role(self.my_id)
+        role, target = self.state.role(self.my_id)
 
         # Consensus-coordinated collision avoidance at the funnel: converging
         # bots enter the winner lane STAGGERED by their deterministic rank
@@ -327,7 +281,7 @@ class MissionCoordinator(Node):
         # no two cars corner into the same lane mouth at once.
         hold_converge = False
         if role == "converge":
-            rank = self.fsm.converge_rank(self.my_id)
+            rank = self.state.converge_rank(self.my_id)
             if self._winner_seen is None:
                 self._winner_seen = self.get_clock().now()
             waited = (self.get_clock().now() - self._winner_seen).nanoseconds / 1e9
@@ -345,7 +299,7 @@ class MissionCoordinator(Node):
             self._last_decision = decision
             extra = ""
             if role == "converge":
-                extra = (f" (rank={self.fsm.converge_rank(self.my_id)}"
+                extra = (f" (rank={self.state.converge_rank(self.my_id)}"
                          f"{', staggered-hold' if hold_converge else ', go'})")
             self._flog(f"DECIDE role={role} target={target} drive={drive}{extra}")
 
@@ -355,32 +309,18 @@ class MissionCoordinator(Node):
 
         self.state_pub.publish(String(data=json.dumps({
             "robot_id": self.my_id,
-            "epoch": self.fsm.epoch,
-            "assigned": {str(b): r for b, r in sorted(self.fsm.assigned.items())},
-            "arrived": sorted(self.fsm.arrived),
-            "blocked": sorted(self.fsm.blocked),
-            "winner_route": self.fsm.winner_route,
-            "phase": self.fsm.phase,
+            "epoch": self.state.epoch,
+            "assigned": {str(b): r for b, r in sorted(self.state.assigned.items())},
+            "arrived": sorted(self.state.arrived),
+            "blocked": sorted(self.state.blocked),
+            "winner_route": self.state.winner_route,
+            "phase": self.state.phase,
             "role": role,
         }, sort_keys=True)))
 
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = MissionCoordinator()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    except Exception:
-        pass                    # benign rclpy teardown race on SIGINT
-    finally:
-        try:
-            node.destroy_node()
-        except Exception:
-            pass
-        if rclpy.ok():
-            rclpy.shutdown()
+    spin_agent(MissionCoordinator)
 
 
 if __name__ == "__main__":

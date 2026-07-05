@@ -177,11 +177,15 @@ Each robot `i` runs, in namespace `/robot_i`:
 
 - **`vertex_node`**: the binary under test. One per robot, peered with the
   other three over UDP (the L1 mesh, scaled 3 → 4).
-- **`mission_coordinator`**: implements §3.1. Folds `/vertex/event` into the
-  FSM, emits claims and physical outcomes, and translates its role
-  (explore / converge / wait / done) into a drive command. Also writes a
-  per-node consensus log (`logs/robot_<i>_consensus.log`) recording every
-  delivered event hash, every submitted transaction, and every decision.
+- **`mission_coordinator`**: implements §3.1 **on the `vertex_fleet` consumer
+  API**: `MissionState` extends `vertex_fleet.ReplicatedState` (epoch and
+  reset handling) and the coordinator extends `vertex_fleet.VertexAgent`
+  (lifecycle bring-up, the single-mutation-path fold, epoch-stamped
+  proposals), so this simulation exercises exactly the library third parties
+  build on. On top it adds the mission logic: claims and physical outcomes,
+  the lease timeout, the role-to-drive translation, and a per-node consensus
+  log (`logs/robot_<i>_consensus.log`) recording every delivered event hash,
+  every submitted transaction, and every decision.
 - **`waypoint_follower`**: drives the waypoint list of the assigned route (or
   holds at staging / parks at the goal). No Nav2 planner and no costmap:
   motion stays deterministic and assertions crisp. Physical bot-to-bot
