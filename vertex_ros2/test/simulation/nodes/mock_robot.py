@@ -24,6 +24,8 @@ Test hooks:
 """
 
 import json
+import os
+import signal
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
@@ -95,6 +97,12 @@ class MockRobot(Node):
 
 def main(args=None):
     rclpy.init(args=args)
+    # This is a stateless test fixture: exit immediately on the harness's
+    # SIGINT/SIGTERM instead of walking rclpy's teardown, which has a native
+    # (segfault-level) shutdown race that can fail a launch_test's clean-exit
+    # assertion through no fault of the system under test.
+    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
+    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
     node = MockRobot()
     try:
         rclpy.spin(node)
