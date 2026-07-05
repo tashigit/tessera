@@ -28,11 +28,18 @@ GitHub Release carrying:
 So one tessera tag transitively identifies the exact engine build: tag →
 recorded bindings commit → its pinned engine release.
 
-## Cutting a release
+## What the version means
 
-Version numbers follow the project's versioning plan. Confirm the target
-version with the team before changing anything; nothing in this repository
-derives or bumps versions automatically.
+The version tracks the **consumer-facing API**: the `vertex_ros2_msgs`
+contract, the `vertex_node` behavior (topics, parameters, lifecycle verbs),
+and the `vertex_fleet` library surface. Internal milestones do not move it.
+`v0.1.0` is the first release third-party ROS 2 developers can build on.
+While in `0.x` the API may still change between minors; `1.0.0` is reserved
+for freezing the contract. Confirm the target number with the team before
+changing anything; nothing in this repository derives or bumps versions
+automatically.
+
+## Cutting a release
 
 1. Set the agreed version in `vertex_ros2_msgs/package.xml`,
    `vertex_ros2/package.xml` + `Cargo.toml`, `vertex_core/Cargo.toml`, and
