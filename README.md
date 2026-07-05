@@ -5,10 +5,9 @@ engine — into ROS 2. Any ROS 2 node can submit opaque bytes on `/vertex/tx` an
 receive a **totally-ordered, cryptographically-final** stream of those bytes
 (grouped into Vertex events) on `/vertex/event`.
 
-This is the v0.1 implementation of the design in
-[`../Docs/ROS2_Vertex_Integration_Design.md`](../Docs/ROS2_Vertex_Integration_Design.md)
-(Linear ticket **TAS-69**). Section references below (e.g. *§4.7*) point into that
-document.
+This implements the ROS 2 + Vertex integration design. Section references
+below (e.g. *§4.7*) point into the design document that guided the
+implementation.
 
 > The project is named *tessera* (a single tile in a mosaic): each consensus
 > event is one ordered tile; together they form the agreed-upon history.
@@ -115,14 +114,14 @@ the bounded channel is FIFO, and `Event::transactions()` iterates by index.
 
 These can't be fully closed inside this repo; each is small (design §9).
 
-1. **`whitened_signature()` — resolved against v0.14.0 (TAS-92).** An earlier
+1. **`whitened_signature()` — resolved against v0.14.0.** An earlier
    (pre-0.14.0) build segfaulted in `tv_event_get_whitened_signature`. In v0.14.0
    the getter reads a fixed-size `Box<[u8; Signature::LENGTH]>` (engine
    `src/engine/event.rs:75`) via `as_ptr()`/`len()` — always non-null, so it
    cannot null-deref. `VertexEvent.whitened_signature` is now **populated**
    (`vertex_core/src/convert.rs`); `single_node` asserts it is non-empty and
    `multi_node` diffs it byte-for-byte across peers (it is consensus-intrinsic).
-2. **`Transaction` Drop leaks** (§9.1, [TAS-94]) — we allocate immediately before
+2. **`Transaction` Drop leaks** (§9.1) — we allocate immediately before
    send, so we never drop an unsent buffer. Note: a `Drop` calling `tv_free` would
    be **unsound** — `tv_transaction_allocate` returns a raw `Box<[u8]>`
    (engine `bindings/c/src/transaction.rs:10`) while `tv_free` expects a tagged

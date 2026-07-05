@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Multi-node system test for vertex_ros2 (TAS-76 / design §7 acceptance).
+# Multi-node system test for vertex_ros2 (design §7 acceptance).
 #
 # Launches THREE `vertex_node` processes (each remapped into its own /vN
 # namespace), drives them through the lifecycle, and asserts the core

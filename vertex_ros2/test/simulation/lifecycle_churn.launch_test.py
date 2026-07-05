@@ -20,7 +20,7 @@
 #   * clean shutdown for every process.
 #
 # Not asserted: that the churned node re-receives events finalized while it
-# was Inactive. Rejoining a running session is upstream scope (TAS-96); the
+# was Inactive. Rejoining a running session is upstream scope (running-session rejoin); the
 # churned robot needs none of those events because it is already done.
 #
 # Run in the Jazzy container:  docker compose run --rm sim simtest

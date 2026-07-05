@@ -26,3 +26,6 @@ vertex_ros2/test/fixtures/
 vertex_ros2/test/simulation/fixtures/peers4.json
 vertex_ros2/test/simulation/logs/
 vertex_ros2/test/simulation/worlds/.*.wbproj
+
+# Local editor and tool state (never commit)
+.claude/

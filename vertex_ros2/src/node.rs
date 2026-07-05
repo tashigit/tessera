@@ -13,7 +13,7 @@
 //!
 //! # Lifecycle (design §8.4 fallback #2)
 //!
-//! `rclrs` does not ship a `LifecycleNode`. Re-checked 2026-06-09 (TAS-76 scope
+//! `rclrs` does not ship a `LifecycleNode`. Re-checked 2026-06-09 (scope
 //! item 2) against `ros2-rust/ros2_rust` `main` (post-v0.7.0): `rclrs/src` still
 //! has no `lifecycle`/`LifecycleNode` module — it carries nodes, services,
 //! parameters, timers, and (newly) actions, but no managed-node support.

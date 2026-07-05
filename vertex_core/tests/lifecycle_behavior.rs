@@ -1,4 +1,4 @@
-//! Lifecycle behavior tests (TAS-76 / design §7):
+//! Lifecycle behavior tests (design §7):
 //! * the event stream only flows while `Active` — `deactivate` stops it;
 //! * a `deactivate → activate` cycle works without a process restart, probing
 //!   the §9.3 "no `Engine::stop`" gap with a concrete result.

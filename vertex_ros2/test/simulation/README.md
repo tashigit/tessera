@@ -216,7 +216,7 @@ state identically.
 | **N1** | **Single blockage**: `R1` blocked, the rest open | **implemented** (`route_exploration.launch_test.py`, headless) | **All reach the end**: every bot ends `arrived`, `phase == done`. **Blocking discovered**: `R1` in every bot's `blocked` set. **Route exclusivity**: no snapshot ever shows two bots assigned one route. **Agreement**: single winner route on all bots, and all 4 `/vertex/event` streams byte-identical. **Clean shutdown**: exit codes 0 / `-SIGINT` / `-SIGTERM`. |
 | **N2** | **Multiple blockages + stale-block stress**: one route open, then the open set flipped mid-mission | **implemented** (live harness: `WEBOTS_AUTOTEST=open<k>` and `turn3` in `route_supervisor.py`) | Fleet discovers the blocks, re-explores after `unblock_all`, converges, and every car physically reaches the goal area (`SUCCESS` line). Live collision monitor: no two cars within 0.24 m. Per-node consensus logs byte-identical (`verify_consensus_logs.py`). |
 | **N3** | **Fault injection**: SIGKILL an assigned explorer (engine + coordinator + body) mid-probe, with its route the ONLY open one | **implemented** (`fault_injection.launch_test.py`) | **Lease liveness:** survivors propose `timeout`, the dead bot's route is released and re-claimed, all three survivors arrive on it. **f=1 at n=4:** the three surviving `/vertex/event` streams keep finalizing and stay byte-identical. Exclusivity holds throughout. |
-| **N4** | **Lifecycle churn**: `deactivate → activate` the first-arrived robot's `vertex_node` via `/vertex/transition` while the fleet keeps moving | **implemented** (`lifecycle_churn.launch_test.py`) | **No `Inactive` leakage:** zero messages on the churned node's `/vertex/event` while inactive, while injected no-op traffic demonstrably finalizes on the live nodes in the same window. Both transitions succeed, the mission completes, live streams stay byte-identical. (Re-delivery of events missed while inactive is upstream scope, TAS-96; the churned robot needs none because it already arrived.) |
+| **N4** | **Lifecycle churn**: `deactivate → activate` the first-arrived robot's `vertex_node` via `/vertex/transition` while the fleet keeps moving | **implemented** (`lifecycle_churn.launch_test.py`) | **No `Inactive` leakage:** zero messages on the churned node's `/vertex/event` while inactive, while injected no-op traffic demonstrably finalizes on the live nodes in the same window. Both transitions succeed, the mission completes, live streams stay byte-identical. (Re-delivery of events missed while inactive is upstream running-session-rejoin scope; the churned robot needs none because it already arrived.) |
 | **N5** | **Randomized soak**: back-to-back missions, each with a random blocked set (always ≥ 1 route open), restarted via consensus `reset` epochs | **implemented** (`soak_missions.launch_test.py`, `SOAK_SECONDS`) | **Consistent termination:** every mission ends `done` on all four robots with one agreed winner that is never a blocked route. **No leak:** each `vertex_node` RSS grows < 50 MB after the first-mission warm-up. Streams end byte-identical. |
 
 ### 4.1 Pass/fail table (implemented checks)
@@ -251,7 +251,7 @@ state identically.
 - **No retroactive catch-up.** Vertex orders events a node observes *while
   participating*. A node that is `Inactive` or crashed during decisions does
   not automatically relearn them on rejoin without a running-session
-  state-transfer path (`vertex.joining_running_session`, upstream TAS-96).
+  state-transfer path (`vertex.joining_running_session`, upstream work in progress).
 - **Determinism.** The state machine and waypoint motion are deterministic,
   but the real engines' network timing is not, so which bot wins the race to
   claim a given route varies run to run. Assertions therefore check invariants
@@ -261,7 +261,7 @@ state identically.
 - **Layer boundary.** L3 is not a Vertex correctness test; L0/L1 are the
   authoritative ordering tests.
 - **Out of scope.** `whitened_signature` and `SyncPoint` payloads (L1 /
-  upstream TAS-92, TAS-95).
+  upstream work in progress).
 
 ---
 
@@ -424,7 +424,7 @@ no arm64 Linux build for the container).
 
 ## 9. Traceability — mapping to acceptance criteria & tickets
 
-| This harness | Existing criterion (design §7 / TAS-69) | Relationship |
+| This harness | Existing criterion (design §7) | Relationship |
 |---|---|---|
 | N1 agreement + byte-identical events | "events published in Vertex order; byte-identical across peers (G4)" | re-confirms at 4 peers, and shows the ordered log driving a concurrent multi-bot decision |
 | N1 route exclusivity, convergence, liveness | *(none: application layer)* | new; the coordinated-exploration demonstration |

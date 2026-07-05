@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 10-minute soak test for vertex_ros2 (TAS-76 / design §7: "No unbounded memory
+# 10-minute soak test for vertex_ros2 (design §7: "No unbounded memory
 # growth under 10-minute load").
 #
 # Launches a single `vertex_node`, activates it, publishes transactions at a

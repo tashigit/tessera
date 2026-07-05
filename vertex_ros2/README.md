@@ -19,7 +19,7 @@ outside colcon will not resolve `rclrs`/the generated message crates.
 
 ## Lifecycle (the rclrs gap, §8.4)
 
-`rclrs` ships no `LifecycleNode`. **Re-checked 2026-06-09** (TAS-76 scope item 2)
+`rclrs` ships no `LifecycleNode`. **Re-checked 2026-06-09**
 against `ros2-rust/ros2_rust` `main` (post-v0.7.0): `rclrs/src` still has no
 `lifecycle`/`LifecycleNode` module — it provides nodes, services, parameters,
 timers, and (newly) actions, but no managed-node support. **Decision: keep the

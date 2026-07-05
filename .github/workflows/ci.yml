@@ -1,7 +1,7 @@
 name: vertex_ros2 CI (Jazzy)
 
 # Runs the same Dockerized ROS 2 Jazzy harness that is used locally
-# (docker-compose.yml) so the TAS-76 acceptance criteria are verified in CI:
+# (docker-compose.yml) so the design acceptance criteria are verified in CI:
 #   * `test`     — vertex_core cargo test + colcon build + the 3-node launch_test
 #                  (ordering byte-for-byte, no-publish-in-Inactive, lifecycle
 #                  cycle, clean shutdown).

@@ -73,7 +73,7 @@ impl EventRecord {
             created_at: nanos_to_time(event.created_at()),
             hash: *event.hash(),
             creator_pub_der: event.creator().to_der_vec().unwrap_or_default(),
-            // Re-enabled against tashi-vertex v0.14.0 (TAS-92): the FFI getter
+            // Re-enabled against tashi-vertex v0.14.0: the FFI getter
             // `tv_event_get_whitened_signature` reads a `Box<[u8; Signature::
             // LENGTH]>` field (engine `src/engine/event.rs:75`) via `as_ptr()`/
             // `len()` — always non-null, fixed length, so it cannot segfault.

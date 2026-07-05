@@ -10,7 +10,7 @@
 //! onto `rclrs` publishers/subscribers/services and the generated message
 //! types, and ships the `vertex_node` binary. That crate only builds inside a
 //! colcon/ROS 2 workspace; this one builds and is exercised by plain
-//! `cargo test`. See the design doc `ROS2_Vertex_Integration_Design.md`.
+//! `cargo test`. See the workspace README for the design overview.
 
 pub mod bridge;
 pub mod config;

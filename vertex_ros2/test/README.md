@@ -1,6 +1,6 @@
 # vertex_ros2 system tests
 
-ROS-level acceptance tests (design §7, TAS-76 rollout step 5). They launch real
+ROS-level acceptance tests (design §7). They launch real
 `vertex_node` processes and require **ROS 2 (Jazzy baseline)** + a colcon-built
 workspace — they do **not** run in a plain `cargo test` sandbox.
 

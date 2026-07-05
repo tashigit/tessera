@@ -1,4 +1,4 @@
-//! Multi-node system test — the core of TAS-76 / design §7 acceptance:
+//! Multi-node system test — the core of the design §7 acceptance:
 //! *"Events published in Vertex order, transactions ordered within an event"*,
 //! verified by **diffing the event streams of all peers byte-for-byte**.
 //!

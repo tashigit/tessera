@@ -68,7 +68,7 @@ fn submitted_transactions_round_trip_in_order() {
             }
             match timeout(remaining, events.recv()).await {
                 Ok(Some(ev)) => {
-                    // TAS-92: whitened_signature is re-enabled against v0.14.0.
+                    // whitened_signature is re-enabled against v0.14.0.
                     // Record the length of the first non-empty one we observe.
                     if whitened_len == 0 {
                         whitened_len = ev.whitened_signature.len();
@@ -87,7 +87,7 @@ fn submitted_transactions_round_trip_in_order() {
         (got, whitened_len)
     });
 
-    // TAS-92: calling Event::whitened_signature() against v0.14.0 does NOT
+    // Calling Event::whitened_signature() against v0.14.0 does NOT
     // segfault (the FFI getter reads a fixed-size Box<[u8; LENGTH]> field), and
     // the value comes back populated.
     assert!(
