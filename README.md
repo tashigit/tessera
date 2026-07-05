@@ -5,9 +5,9 @@ engine — into ROS 2. Any ROS 2 node can submit opaque bytes on `/vertex/tx` an
 receive a **totally-ordered, cryptographically-final** stream of those bytes
 (grouped into Vertex events) on `/vertex/event`.
 
-This is the v0.1 implementation of the design in
-[`../Docs/ROS2_Vertex_Integration_Design.md`](../Docs/ROS2_Vertex_Integration_Design.md). Section references below (e.g. *§4.7*) point into that
-document.
+This implements the ROS 2 + Vertex integration design. Section references
+below (e.g. *§4.7*) point into the design document that guided the
+implementation.
 
 > The project is named *tessera* (a single tile in a mosaic): each consensus
 > event is one ordered tile; together they form the agreed-upon history.

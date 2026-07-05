@@ -1,6 +1,6 @@
 //! Bake an rpath to `libtashi-vertex` into the `vertex_node` binary so the
 //! colcon-installed executable loads without an `LD_LIBRARY_PATH` export
-//! (consumer friction).
+//! (removes the consumer-facing LD_LIBRARY_PATH requirement).
 //!
 //! Same problem and same fix as `vertex_core/build.rs`: `tashi-vertex`'s own
 //! build script adds an rpath only to *its own* binaries, so downstream

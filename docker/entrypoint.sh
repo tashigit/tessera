@@ -6,7 +6,7 @@
 #
 #   core    cargo-test vertex_core only (real libtashi-vertex, no ROS layer)
 #   build   colcon build the vertex_ros2 node (+ its colcon deps)
-#   test    core + build + the 3-node launch_test (design §7 scope 1)
+#   test    core + build + the 3-node launch_test (design §7)
 #   soak    the 10-minute RSS soak launch_test (SOAK_SECONDS overrides length)
 #   shell   drop into an interactive shell with the environment sourced
 #

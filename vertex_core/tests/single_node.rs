@@ -87,7 +87,7 @@ fn submitted_transactions_round_trip_in_order() {
         (got, whitened_len)
     });
 
-    // calling Event::whitened_signature() against v0.14.0 does NOT
+    // Calling Event::whitened_signature() against v0.14.0 does NOT
     // segfault (the FFI getter reads a fixed-length buffer), and
     // the value comes back populated.
     assert!(

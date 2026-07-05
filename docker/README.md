@@ -2,7 +2,7 @@
 
 Runs the `vertex_ros2` node and its `launch_test`s on a machine without a native
 ROS 2 install. Built and tested target: **ROS 2 Jazzy on Ubuntu 24.04**, the same
-distro the acceptance criteria (§7) target.
+distro the design acceptance criteria (§7) target.
 
 ## Why containerized (and not native macOS)
 
@@ -67,7 +67,7 @@ uncomment the `tashi-vertex-c` mount and `TASHI_VERTEX_LOCAL_DIR` env in
 
 The same image backs CI: a GitHub Actions job on an arm64 (or amd64) runner runs
 `docker compose run --rm test` and, on a schedule, `soak`. This is the path that
-turns the "system tests pass **in CI** on Jazzy" criteria green.
+turns the "system tests pass **in CI** on Jazzy" criterion green.
 
 ## Caveats (could not be executed from the authoring environment)
 
