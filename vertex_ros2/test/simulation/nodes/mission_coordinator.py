@@ -84,6 +84,9 @@ class MissionCoordinator(VertexAgent):
         self.pose_x = -4.0
         self.pose_y = 0.0
         self.barrier_ahead = False
+        self._barrier_stamp = None       # when the latched True last arrived
+        self._target_key = None          # (epoch, role, target) currently pursued
+        self._target_since = self.get_clock().now()
 
         now = self.get_clock().now()
         self._last_claim = now
@@ -160,6 +163,8 @@ class MissionCoordinator(VertexAgent):
 
     def _on_barrier(self, msg: Bool):
         self.barrier_ahead = msg.data
+        if msg.data:
+            self._barrier_stamp = self.get_clock().now()
 
     # ---- emit a transaction (epoch-stamped by VertexAgent.propose) ----
     def _emit(self, record: dict):
@@ -194,20 +199,38 @@ class MissionCoordinator(VertexAgent):
         if role == "wait":
             self._reported_for = None
 
+        # track when the CURRENT pursuit began, so physical evidence can be
+        # required to postdate it (see the blocked gate below)
+        key_now = (self.state.epoch, role, target)
+        if key_now != self._target_key:
+            self._target_key = key_now
+            self._target_since = now
+
         # 1. Physical outcome for my current target (explore or converge), once.
         #    An arrival counts only ON the target route's row: a bot can end up
         #    past goal_x on a DIFFERENT lane (e.g. shoved down a freshly opened
         #    route by a barrier flip mid-push) and must not credit its assigned
         #    route with a phantom `arrived` — that poisons the shared state.
+        #    A blocked report needs barrier evidence that is FRESH FOR THIS
+        #    TARGET: `barrier_ahead` is a latched flag, and a bot re-tasked
+        #    right after stalling on a blocked route can otherwise charge the
+        #    stale flag to its new route within one tick. That phantom-blocked
+        #    the open winner in the mission soak (route poisoned, winner
+        #    cleared, fleet deadlocked), so the True must have arrived well
+        #    after this pursuit began, past any in-flight stale message.
         if role in ("explore", "converge") and target is not None:
             key = (self.state.epoch, target)
             if self._reported_for != key:
                 row = self.lane_y.get(target)
                 on_row = row is None or abs(self.pose_y - row) < 0.5
+                barrier_fresh = (
+                    self.barrier_ahead and self._barrier_stamp is not None
+                    and (self._barrier_stamp - self._target_since).nanoseconds
+                        > 0.5e9)
                 if self.pose_x > self.goal_x and on_row:
                     self._emit({"op": "arrived", "bot": self.my_id, "route": target})
                     self._reported_for = key
-                elif self.barrier_ahead:
+                elif barrier_fresh:
                     self._emit({"op": "blocked", "bot": self.my_id, "route": target})
                     self._reported_for = key
 
