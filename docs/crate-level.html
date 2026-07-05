@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wiring Tashi Vertex at the crate level</title>
+<style>
+  :root {
+    --paper: #f6f7f8;
+    --ink: #1c2530;
+    --muted: #5b6875;
+    --line: #dde1e6;
+    --accent: #2b5d8a;
+    --accent-soft: #e5edf4;
+    --code-bg: #1a222b;
+    --code-ink: #d9e1ea;
+    --code-dim: #7e8fa0;
+    --l3: #b58a2e;   /* application */
+    --l2: #4f8a52;   /* adapter */
+    --l1: #2b5d8a;   /* vertex_core */
+    --l0: #7a4f9e;   /* tashi-vertex-rs + C engine */
+    --good: #1a7f37;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    --sans: "Avenir Next", "Segoe UI", -apple-system, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.65; }
+  .wrap { display: flex; max-width: 1200px; margin: 0 auto; }
+
+  nav {
+    width: 232px; flex: none; position: sticky; top: 0; align-self: flex-start;
+    max-height: 100vh; overflow-y: auto; padding: 40px 20px 40px 28px;
+    font-family: var(--sans); font-size: 13px; border-right: 1px solid var(--line);
+    box-sizing: border-box;
+  }
+  nav .brand { font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    font-size: 11px; color: var(--accent); margin-bottom: 18px; }
+  nav a { display: block; color: var(--muted); text-decoration: none;
+    padding: 5px 8px; border-left: 2px solid transparent; margin-left: -10px; line-height: 1.35; }
+  nav a:hover { color: var(--ink); }
+  nav a:focus-visible { outline: 2px solid var(--accent); border-radius: 3px; }
+  nav a.on { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+
+  main { flex: 1; min-width: 0; padding: 48px 56px 120px; box-sizing: border-box; }
+  @media (max-width: 900px) { nav { display: none; } main { padding: 32px 20px 80px; } }
+
+  header.doc h1 { font-family: var(--sans); font-weight: 700; font-size: 34px;
+    line-height: 1.15; letter-spacing: -0.015em; margin: 8px 0 14px; text-wrap: balance; }
+  .eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  .lede { font-size: 19px; color: #38434e; max-width: 62ch; }
+  h2 { font-family: var(--sans); font-weight: 700; font-size: 24px;
+    letter-spacing: -0.01em; margin: 64px 0 8px; text-wrap: balance; scroll-margin-top: 24px; }
+  h2 .stepno { font-size: 12px; font-weight: 600; letter-spacing: .12em;
+    color: var(--accent); text-transform: uppercase; display: block; margin-bottom: 4px; }
+  h3 { font-family: var(--sans); font-size: 17px; margin: 30px 0 6px; scroll-margin-top: 24px; }
+  p, ul, ol { max-width: 66ch; }
+  li { margin-bottom: 5px; }
+  a { color: var(--accent); }
+  strong { color: #101b26; }
+  .note { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    background: var(--accent-soft); padding: 12px 16px; max-width: 62ch;
+    font-size: 15.5px; border-radius: 0 6px 6px 0; margin: 18px 0; }
+  .warn { border-left-color: #b3402f; background: #f6e3df; }
+
+  .tablewrap { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; font-family: var(--sans); font-size: 14px; min-width: 560px; }
+  th { text-align: left; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  th, td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td code, p code, li code, .note code { font-family: var(--mono); font-size: .85em;
+    background: #e7eaee; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+
+  .code { position: relative; background: var(--code-bg); color: var(--code-ink);
+    border-radius: 8px; margin: 16px 0; font-size: 13.5px; }
+  .code .lang { position: absolute; top: 9px; left: 14px; font-family: var(--sans);
+    font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--code-dim); }
+  .code button.copy { position: absolute; top: 6px; right: 8px; font-family: var(--sans);
+    font-size: 11px; padding: 3px 10px; border-radius: 5px;
+    border: 1px solid #344252; background: transparent; color: var(--code-dim); cursor: pointer; }
+  .code button.copy:hover { color: var(--code-ink); border-color: var(--code-dim); }
+  .code button.copy:focus-visible { outline: 2px solid var(--accent); }
+  .code pre { margin: 0; padding: 34px 18px 16px; overflow-x: auto;
+    font-family: var(--mono); line-height: 1.55; }
+  .code .c { color: #71839a; }
+  .code .k { color: #93c7e8; }
+  .code .s { color: #d5b877; }
+  .code .t { color: #a3d9a5; }
+
+  /* ---- stack explorer ---- */
+  .stack { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 20px; margin: 22px 0; font-family: var(--sans); }
+  .stack h3 { margin: 0 0 2px; }
+  .stack .sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+  .layers { display: flex; flex-direction: column; gap: 6px; max-width: 460px; }
+  .layer { border: 1.5px solid var(--line); border-radius: 8px; padding: 10px 14px;
+    cursor: pointer; background: #fbfcfd; display: flex; align-items: baseline; gap: 10px; }
+  .layer:focus-visible { outline: 2px solid var(--accent); }
+  .layer .tag { font-family: var(--mono); font-size: 10.5px; padding: 1px 7px;
+    border-radius: 4px; color: #fff; flex: none; }
+  .layer b { font-size: 14px; }
+  .layer span.role { font-size: 12px; color: var(--muted); margin-left: auto; text-align: right; }
+  .layer.sel { border-color: var(--ink); background: #fff; }
+  .layerinfo { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px;
+    font-size: 14px; max-width: none; min-height: 120px; }
+  .layerinfo h4 { margin: 0 0 6px; font-size: 14px; }
+  .layerinfo ul { margin: 6px 0; padding-left: 20px; max-width: none; }
+  .layerinfo li { font-size: 13.5px; margin-bottom: 3px; }
+  .layerinfo .when { display: inline-block; margin-top: 6px; font-size: 12.5px;
+    background: var(--accent-soft); color: var(--accent); padding: 3px 10px; border-radius: 999px; }
+
+  /* ---- decision helper ---- */
+  .decide { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 20px; margin: 22px 0; font-family: var(--sans); }
+  .decide .q { font-size: 15px; font-weight: 600; margin: 10px 0 8px; }
+  .decide .opts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .decide button.opt { font-family: var(--sans); font-size: 13px; padding: 6px 14px;
+    border-radius: 7px; border: 1.5px solid var(--line); background: #fbfcfd; cursor: pointer; }
+  .decide button.opt:hover { border-color: var(--accent); color: var(--accent); }
+  .decide button.opt.picked { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .decide button.opt:focus-visible { outline: 2px solid var(--accent); }
+  .decide .rec { margin-top: 14px; border-left: 3px solid var(--good); background: #e8f2ea;
+    padding: 12px 16px; border-radius: 0 6px 6px 0; font-size: 14.5px; display: none; }
+  .decide .rec.show { display: block; }
+  .decide .rec b { display: block; margin-bottom: 4px; }
+
+  .checklist { list-style: none; padding: 0; max-width: 70ch; font-family: var(--sans); font-size: 15px; }
+  .checklist li { display: flex; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); align-items: baseline; }
+  .checklist input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; transform: translateY(2px); }
+  .checklist label { cursor: pointer; }
+  .checklist input:checked + label { color: var(--muted); text-decoration: line-through; }
+
+  .kicker { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .series { font-family: var(--sans); font-size: 13px; border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 14px; margin: 18px 0; background: #fff; max-width: 62ch; }
+  .series b { color: var(--accent); }
+  .series a { text-decoration: none; }
+
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-family: var(--sans); font-size: 13px; color: var(--muted); max-width: 66ch; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav aria-label="Contents">
+  <div class="brand">Tessera / Crate Level</div>
+  <a href="#stack">The stack</a>
+  <a href="#decide">Choose your level</a>
+  <a href="#anatomy">Anatomy of vertex_core</a>
+  <a href="#s1">1 · Workspace and build</a>
+  <a href="#s2">2 · Keys and config</a>
+  <a href="#s3">3 · A headless fleet</a>
+  <a href="#s4">4 · The concurrency contract</a>
+  <a href="#s5">5 · Writing your own adapter</a>
+  <a href="#s6">6 · Testing this layer</a>
+  <a href="#pitfalls">Pitfalls</a>
+  <a href="#checklist">Checklist</a>
+  <a href="#map">Code map</a>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">Tutorial · Volume 3 · Crate-level internals</div>
+  <h1>Wiring Tashi Vertex into a new project at the crate level</h1>
+  <p class="lede">Volumes 1 and 2 treat tessera's <code>vertex_node</code> as a black box behind ROS topics. This one opens the box: how the crates fit together, how to embed the engine in a plain Rust process with no ROS at all, and how to write your own middleware adapter the way <code>vertex_ros2</code> was written. Everything here comes from tessera's <code>vertex_core</code> crate and its real tests.</p>
+  <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;<a href="concepts.html">Concepts and protocol design</a> &nbsp;→&nbsp; 2&nbsp;·&nbsp;<a href="fleet-api.html">The fleet API</a> (the default path for ROS&nbsp;2 projects) &nbsp;→&nbsp; 3&nbsp;·&nbsp;Crate-level internals (you are here). Come here when your process cannot be a ROS&nbsp;2 node, or you are building an adapter.</div>
+  <p class="kicker">You need: Rust (stable), CMake, and access to the <code>tessera</code> and <code>tashi-vertex-rs</code> repositories. No ROS required until section 5.</p>
+</header>
+
+<h2 id="stack">The stack: four layers, three places to plug in</h2>
+<p>Tessera is deliberately layered so that the correctness-critical code never depends on ROS. Click each layer to see what it owns and when you would target it.</p>
+
+<div class="stack" id="stackbox">
+  <h3>Stack explorer</h3>
+  <div class="sub">Top is your code, bottom is the consensus engine. Every layer only calls the one below it.</div>
+  <div class="layers" id="layers" role="tablist"></div>
+  <div class="layerinfo" id="layerinfo"></div>
+</div>
+
+<h2 id="decide">Choose your integration level</h2>
+<p>Two questions decide where you plug in. Answer them and I will point you at the right sections.</p>
+<div class="decide" id="decider">
+  <div class="q">Is the new project a ROS 2 system?</div>
+  <div class="opts" data-q="ros">
+    <button class="opt" data-v="yes">Yes, ROS 2</button>
+    <button class="opt" data-v="no">No ROS</button>
+  </div>
+  <div class="q">Can the process that talks to the engine be written in Rust?</div>
+  <div class="opts" data-q="rust">
+    <button class="opt" data-v="yes">Yes, Rust is fine</button>
+    <button class="opt" data-v="no">No, another language or middleware</button>
+  </div>
+  <div class="rec" id="recbox"></div>
+</div>
+
+<h2 id="anatomy">Anatomy of vertex_core</h2>
+<p><code>vertex_core</code> is a plain cargo crate with no ROS dependency. It owns everything that must be correct: the lifecycle state machine, the engine thread, the bounded channels, and the conversion out of FFI memory. The API you program against is small:</p>
+
+<div class="code"><span class="lang">rust — the surface</span><button class="copy">Copy</button><pre>
+<span class="k">use</span> vertex_core::{Controller, Config, PeerConfig, BridgeConfig, VertexOptions};
+<span class="k">use</span> vertex_core::{EventRecord, LifecycleState, StatusSnapshot};
+
+<span class="k">let mut</span> c = Controller::new();          <span class="c">// state: Unconfigured</span>
+c.configure(config)?;                     <span class="c">// -&gt; Inactive (validates, no I/O)</span>
+<span class="k">let</span> (event_rx, sync_rx) = c.activate()?; <span class="c">// -&gt; Active (spawns the engine thread,</span>
+                                          <span class="c">//    binds UDP, starts the engine)</span>
+c.submit(payload);                        <span class="c">// bytes -&gt; consensus (non-blocking)</span>
+<span class="k">while let</span> Some(ev) = event_rx.recv().<span class="k">await</span> {
+    <span class="c">// ev: EventRecord, finalized, identical order on every peer</span>
+}
+c.deactivate()?;                          <span class="c">// -&gt; Inactive (stops the engine thread)</span>
+c.shutdown()?;                            <span class="c">// -&gt; Finalized (idempotent teardown)</span>
+</pre></div>
+
+<p>Key types, all defined in the crate:</p>
+<div class="tablewrap"><table>
+  <tr><th>Type</th><th>What it is</th></tr>
+  <tr><td><code>Controller</code></td><td>the lifecycle orchestrator. Owns the engine thread. <code>configure / activate / deactivate / cleanup / shutdown / submit / status</code></td></tr>
+  <tr><td><code>Config</code></td><td><code>bind_address</code> (literal <code>IP:port</code>, no DNS), <code>key: KeySecret</code>, <code>peers: Vec&lt;PeerConfig&gt;</code>, <code>joining_running_session</code>, <code>bridge</code>, <code>options</code></td></tr>
+  <tr><td><code>PeerConfig</code></td><td>one remote peer: address plus <code>KeyPublic</code>. Parses the <code>"&lt;base58_pubkey&gt;@&lt;ip:port&gt;"</code> spec form</td></tr>
+  <tr><td><code>BridgeConfig</code></td><td>channel bounds: <code>tx_channel_capacity</code> 1024, <code>event_channel_capacity</code> 4096 by default</td></tr>
+  <tr><td><code>VertexOptions</code></td><td>plain mirror of every engine tunable. Defaults match the engine's: <code>heartbeat_us</code> 500000, <code>target_ack_latency_ms</code> 400, <code>transaction_channel_size</code> 32, dynamic epoch sizing and hole punching on</td></tr>
+  <tr><td><code>EventRecord</code></td><td>a finalized event, fully copied out of FFI memory: <code>consensus_at</code>, <code>created_at</code>, <code>hash: [u8; 32]</code>, <code>creator_pub_der</code>, <code>whitened_signature</code>, <code>transactions: Vec&lt;TransactionRecord&gt;</code></td></tr>
+  <tr><td><code>Status</code> / <code>StatusSnapshot</code></td><td>lock-free counters: running, peer count, <code>tx_submitted_total</code>, <code>tx_rejected_total</code>, <code>events_published_total</code>, last error</td></tr>
+</table></div>
+
+<div class="note">The controller always inserts <strong>yourself</strong> into the peer set, so <code>Config.peers</code> lists only the <em>other</em> nodes. Total session size is <code>peers.len() + 1</code>, and the BFT sizing rule from the first tutorial (n ≥ 3f + 1) applies to that total.</div>
+
+<h2 id="s1"><span class="stepno">Step 1</span>Workspace and build plumbing</h2>
+<p><code>vertex_core</code> depends on <code>tashi-vertex</code> as a <strong>path dependency</strong>, so the two repositories must sit side by side, and your project joins them:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+workspace/
+├── tessera/            <span class="c"># vertex_core lives at tessera/vertex_core</span>
+├── tashi-vertex-rs/    <span class="c"># the Rust bindings; builds/downloads libtashi-vertex</span>
+└── my-fleet/           <span class="c"># your new crate</span>
+</pre></div>
+<div class="code"><span class="lang">toml — my-fleet/Cargo.toml</span><button class="copy">Copy</button><pre>
+[package]
+name = <span class="s">"my-fleet"</span>
+edition = <span class="s">"2021"</span>
+
+[dependencies]
+vertex_core = { path = <span class="s">"../tessera/vertex_core"</span> }
+tashi-vertex = { path = <span class="s">"../tashi-vertex-rs"</span> }   <span class="c"># for KeySecret / KeyPublic</span>
+tokio = { version = <span class="s">"1"</span>, features = [<span class="s">"rt-multi-thread"</span>, <span class="s">"macros"</span>, <span class="s">"time"</span>] }
+</pre></div>
+<p>Two build facts to know before your first <code>cargo build</code>:</p>
+<ul>
+  <li><strong>The C engine.</strong> <code>tashi-vertex-rs</code> builds against <code>libtashi-vertex</code> (the actual consensus engine, a C library). Its build downloads the release archive by default. To build against a local checkout instead, set <code>TASHI_VERTEX_LOCAL_DIR</code> to it (tessera's Docker harness exposes the same switch).</li>
+  <li><strong>The rpath problem.</strong> The bindings' build script adds an rpath only to <em>its own</em> binaries. Downstream binaries link <code>libtashi-vertex.so</code>/<code>.dylib</code> but cannot find it at runtime. <code>vertex_core</code> ships a <code>build.rs</code> that locates the library under the shared target directory and bakes an absolute rpath plus <code>$ORIGIN</code>-style fallbacks. Copy that <code>build.rs</code> into your crate, or export <code>LD_LIBRARY_PATH</code> the way tessera's <code>docker/entrypoint.sh</code> does (<code>export_tv_libpath</code>).</li>
+</ul>
+
+<h2 id="s2"><span class="stepno">Step 2</span>Keys and configuration in code</h2>
+<p>At this layer you do not need JSON fixtures or shell scripts. Identities are two calls, and the base58 forms round-trip through <code>Display</code>/<code>FromStr</code> when you want to persist them:</p>
+<div class="code"><span class="lang">rust</span><button class="copy">Copy</button><pre>
+<span class="k">use</span> tashi_vertex::KeySecret;
+<span class="k">use</span> vertex_core::{Config, PeerConfig, BridgeConfig, VertexOptions};
+
+<span class="k">let</span> key = KeySecret::generate();          <span class="c">// fresh identity</span>
+<span class="k">let</span> b58 = key.to_string();                <span class="c">// persist this (file, vault, ...)</span>
+<span class="k">let</span> key = Config::secret_from_base58(&amp;b58)?;   <span class="c">// ...and load it back</span>
+
+<span class="c">// peers accept the same "&lt;pubkey&gt;@&lt;ip:port&gt;" spec the ROS parameter uses</span>
+<span class="k">let</span> peers = Config::peers_from_specs([
+    <span class="s">"6Yx...@10.0.0.2:47611"</span>,
+    <span class="s">"9Kp...@10.0.0.3:47611"</span>,
+])?;
+
+<span class="k">let</span> config = Config {
+    bind_address: <span class="s">"10.0.0.1:47611"</span>.into(),  <span class="c">// literal IP, no DNS</span>
+    key,
+    peers,                                   <span class="c">// the OTHERS; self is auto-inserted</span>
+    joining_running_session: <span class="k">false</span>,
+    bridge: BridgeConfig::default(),         <span class="c">// tx 1024 / event 4096</span>
+    options: VertexOptions {
+        heartbeat_us: 50_000,                <span class="c">// small sessions form events faster</span>
+        ..VertexOptions::default()
+    },
+};
+</pre></div>
+<div class="note">For small test meshes, drop <code>heartbeat_us</code> from the 500 ms default to 50 ms, exactly what tessera's own tests and the simulation do. Events form quickly and teardown observes its stop flag sooner (the receive loop wakes at most one heartbeat apart).</div>
+
+<h2 id="s3"><span class="stepno">Step 3</span>A headless three-node fleet, no ROS anywhere</h2>
+<p>This is the canonical lower-level usage and it is lifted from a test tessera runs on every push (<code>vertex_core/tests/multi_node.rs</code>): three real engines in one process, gossiping over localhost UDP, asserting the totally-ordered guarantee. Strip the asserts and this skeleton is your application main:</p>
+<div class="code"><span class="lang">rust — three in-process peers</span><button class="copy">Copy</button><pre>
+<span class="k">use</span> tashi_vertex::KeySecret;
+<span class="k">use</span> vertex_core::{Config, Controller, PeerConfig};
+
+<span class="c">// --- identities: three keypairs, three localhost ports ---</span>
+<span class="k">let</span> nodes: Vec&lt;(KeySecret, String)&gt; = (0..3)
+    .map(|i| (KeySecret::generate(), <span class="k">format!</span>(<span class="s">"127.0.0.1:{}"</span>, 47411 + i)))
+    .collect();
+
+<span class="c">// --- one Controller per node, each listing the OTHER two as peers ---</span>
+<span class="k">let mut</span> controllers = Vec::new();
+<span class="k">let mut</span> receivers = Vec::new();
+<span class="k">for</span> i <span class="k">in</span> 0..nodes.len() {
+    <span class="k">let</span> peers = nodes.iter().enumerate()
+        .filter(|(j, _)| *j != i)
+        .map(|(_, (k, addr))| PeerConfig { address: addr.clone(), public: k.public() })
+        .collect();
+    <span class="c">// KeySecret is not Clone; round-trip DER so each Controller owns a copy</span>
+    <span class="k">let</span> key = KeySecret::from_der(&amp;nodes[i].0.to_der_vec()?)?;
+    <span class="k">let mut</span> c = Controller::new();
+    c.configure(Config { bind_address: nodes[i].1.clone(), key, peers,
+                         joining_running_session: <span class="k">false</span>,
+                         bridge: Default::default(), options: options() })?;
+    <span class="k">let</span> (event_rx, _sync_rx) = c.activate()?;   <span class="c">// engine thread starts here</span>
+    controllers.push(c);
+    receivers.push(event_rx);
+}
+
+<span class="c">// --- submit from any node; observe the SAME order on every node ---</span>
+controllers[0].submit(<span class="k">b</span><span class="s">"hello from node 0"</span>.to_vec());
+controllers[2].submit(<span class="k">b</span><span class="s">"and node 2"</span>.to_vec());
+
+<span class="c">// each receiver yields EventRecords; the streams are byte-identical:</span>
+<span class="c">//   assert_eq!(&amp;streams[n][idx], &amp;streams[0][idx])   for every idx, n</span>
+</pre></div>
+<p>Three details in that skeleton repay attention:</p>
+<ul>
+  <li><code>activate()</code> fails synchronously if the bind or the engine start fails. The engine thread reports startup before entering its receive loop, so you never end up half-active.</li>
+  <li><code>submit()</code> never blocks. A full inbound channel counts the payload into <code>tx_rejected_total</code> and drops it: backpressure is visible, not silent.</li>
+  <li>The receivers are Tokio mpsc receivers. In async code use <code>recv().await</code>. In a plain thread use <code>blocking_recv()</code>, which is exactly what the ROS adapter's pump threads do.</li>
+</ul>
+
+<h2 id="s4"><span class="stepno">Step 4</span>The concurrency contract you inherit for free</h2>
+<p>The reason to embed <code>Controller</code> rather than calling the bindings directly is that the engine's FFI surface has sharp edges, and <code>vertex_core</code> already wraps every one of them. If you bypass it, you must replicate all of this:</p>
+<ul>
+  <li><strong>Engine handles are <code>!Send</code>.</strong> <code>Context</code>, <code>Engine</code>, <code>Socket</code>, <code>Peers</code>, and <code>Options</code> wrap raw pointers and can never cross threads or be <code>tokio::spawn</code>ed. The controller therefore runs the engine on one dedicated OS thread with a current-thread Tokio runtime, and only <code>Send</code> data (payload bytes, <code>EventRecord</code>s, DER-encoded keys) crosses the channel boundary.</li>
+  <li><strong><code>recv_message()</code> is not cancellation-safe.</strong> Its future registers a pointer with the C library on first poll. Racing it inside a <code>tokio::select!</code> drops the losing future and the C callback later writes into freed memory. <code>vertex_core</code> runs two cooperative tasks instead: a receive loop that is never cancelled mid-flight (it exits between messages via a stop flag) and a send loop that only selects over cancellation-safe futures.</li>
+  <li><strong>There is no <code>Engine::stop</code>.</strong> Teardown is dropping the engine and then its <code>Context</code>, and the <code>Context</code> must outlive the <code>Engine</code>. <code>deactivate()</code> waits up to five seconds for the engine thread to wind down and then detaches it rather than hanging forever (an engine that lost quorum can stall in <code>recv_message</code>).</li>
+  <li><strong><code>Transaction</code> is move-only.</strong> Submission is allocate, copy, send, and the type system forbids double-send and double-free. This is also why tessera's Miri CI job covers the pure modules and leaves the FFI to the move-only guarantee.</li>
+  <li><strong>Events are copied out eagerly.</strong> <code>EventRecord::from_event</code> clones every borrowed slice out of FFI-owned memory before the event is dropped, so nothing downstream ever touches engine memory.</li>
+</ul>
+<div class="note warn">If your plan was "just call <code>tashi-vertex-rs</code> directly from my async runtime", stop and reread the second bullet. The safe embedding is genuinely nontrivial, and it is exactly the part <code>vertex_core</code> has already solved and tested. Target the bindings directly only if you cannot take a Tokio dependency at all.</div>
+
+<h2 id="s5"><span class="stepno">Step 5</span>Writing your own adapter (the vertex_ros2 pattern)</h2>
+<p><code>vertex_ros2</code> is a worked example of wrapping <code>Controller</code> for a middleware, and it is thin by design: about three files. To adapt tessera to anything else (Zenoh, MQTT, gRPC, DDS without ROS), reproduce its five moves with your transport:</p>
+<ol>
+  <li><strong>Hold one <code>Controller</code></strong> behind a mutex in your service process.</li>
+  <li><strong>Expose the five lifecycle verbs</strong> (<code>configure / activate / deactivate / cleanup / shutdown</code>) as an RPC, and publish the resulting state (<code>unconfigured / inactive / active / finalized</code>) somewhere late joiners can read it. The ROS adapter uses a service plus a latched topic.</li>
+  <li><strong>Ingress:</strong> your transport's receive callback calls <code>controller.submit(payload)</code>. Nothing else. It is non-blocking and safe from any thread.</li>
+  <li><strong>Egress:</strong> when <code>activate()</code> hands you the receivers, spawn pump threads and forward in order. Order preservation IS the product, so this loop must be the only consumer:</li>
+</ol>
+<div class="code"><span class="lang">rust — the pump, verbatim pattern from the ROS adapter</span><button class="copy">Copy</button><pre>
+std::thread::Builder::new().name(<span class="s">"event-pump"</span>.into()).spawn(<span class="k">move</span> || {
+    <span class="k">while let</span> Some(rec) = event_rx.blocking_recv() {
+        <span class="k">let</span> _ = my_transport.publish(convert(rec));   <span class="c">// your wire format</span>
+    }
+})?;
+</pre></div>
+<ol start="5">
+  <li><strong>Diagnostics:</strong> expose <code>controller.status()</code> snapshots (submitted, rejected, published, last error) on whatever health channel your stack has. The rejected counter is your only backpressure signal, so surface it.</li>
+</ol>
+<p>The contract your adapter must preserve, because everything above it depends on these:</p>
+<ul>
+  <li>events go out in exactly the order the receiver yields them, one consumer, no reordering, no dropping</li>
+  <li>nothing is published while the node is not Active</li>
+  <li>payloads are opaque: no inspection, no rewriting, no compression tricks</li>
+</ul>
+
+<h2 id="s6"><span class="stepno">Step 6</span>Testing at this layer</h2>
+<p>Plain <code>cargo test</code> in <code>vertex_core</code> runs the whole suite against the real engine, no ROS, no simulator. The four integration tests are also the templates for testing your embedding:</p>
+<div class="tablewrap"><table>
+  <tr><th>Test</th><th>What it proves, and what to copy</th></tr>
+  <tr><td><code>single_node.rs</code></td><td>delivery integrity on a solo session: everything submitted comes back finalized</td></tr>
+  <tr><td><code>multi_node.rs</code></td><td>the real guarantee: three peers, byte-identical totally-ordered event streams. Copy its <code>collect_until</code> drain helper and its stream-prefix comparison</td></tr>
+  <tr><td><code>lifecycle_behavior.rs</code></td><td>transition guards: what is legal from which state, teardown from every state</td></tr>
+  <tr><td><code>tx_saturation.rs</code></td><td>backpressure: flooding <code>submit()</code> raises <code>tx_rejected_total</code> instead of blocking or leaking</td></tr>
+</table></div>
+<p>For your own project, the one test I would not skip is the multi-node stream comparison. It catches everything from misconfigured peer sets to an adapter that reorders events:</p>
+<div class="code"><span class="lang">rust — the assertion that matters</span><button class="copy">Copy</button><pre>
+<span class="k">let</span> min_len = streams.iter().map(|s| s.len()).min().unwrap();
+<span class="k">assert!</span>(min_len &gt; 0, <span class="s">"no events collected"</span>);
+<span class="k">for</span> idx <span class="k">in</span> 0..min_len {
+    <span class="k">for</span> s <span class="k">in</span> &amp;streams[1..] {
+        <span class="k">assert_eq!</span>(&amp;s[idx], &amp;streams[0][idx], <span class="s">"consensus order divergence"</span>);
+    }
+}
+</pre></div>
+
+<h2 id="pitfalls">Pitfalls at this layer</h2>
+<ul>
+  <li><strong>DNS in <code>bind_address</code>.</strong> Addresses are literal <code>IP:port</code>, both for binding and in peer specs. Resolve names yourself before building the config.</li>
+  <li><strong>Forgetting you are a peer too.</strong> The controller inserts you into the peer set automatically. If you also list yourself in <code>Config.peers</code>, you have a duplicate.</li>
+  <li><strong><code>KeySecret</code> is not <code>Clone</code>.</strong> To hand the same identity to two places, round-trip it through DER (<code>to_der_vec</code> / <code>from_der</code>), as the multi-node test does.</li>
+  <li><strong>Slow event consumers.</strong> The outbound event channel is bounded (4096 by default). A consumer that stalls eventually blocks the engine task. Keep the pump loop trivial and hand off heavy work to another thread.</li>
+  <li><strong>Expecting to rejoin after a restart.</strong> A restarted process is a new participant. <code>joining_running_session</code> exists for rejoining an in-flight session but is an upstream feature with limits. Design recovery at the protocol level (epochs and resets, as in the first tutorial).</li>
+  <li><strong>Timestamp units.</strong> The engine documents its timestamps as Unix time without a unit. Tessera pins the interpretation to nanoseconds in one function (<code>convert::nanos_to_time</code>). If that assumption ever changes upstream, it is a one-line fix, so route any time handling of your own through the same single point.</li>
+  <li><strong>Sync points are placeholders.</strong> <code>SyncPointRecord.payload</code> is empty until upstream exposes accessors. Do not build features on it yet.</li>
+</ul>
+
+<h2 id="checklist">Crate-level integration checklist</h2>
+<p class="kicker">Ticks persist while this page is open.</p>
+<ul class="checklist">
+  <li><input type="checkbox" id="k1"><label for="k1">Repos side by side, path dependencies resolve, cargo build passes</label></li>
+  <li><input type="checkbox" id="k2"><label for="k2">Runtime linking solved (build.rs rpath copied, or LD_LIBRARY_PATH exported)</label></li>
+  <li><input type="checkbox" id="k3"><label for="k3">Identities generated and persisted as base58, loaded via Config::secret_from_base58</label></li>
+  <li><input type="checkbox" id="k4"><label for="k4">Config lists only the other peers, literal IPs, heartbeat tuned for session size</label></li>
+  <li><input type="checkbox" id="k5"><label for="k5">One Controller per node: configure, activate, receivers wired to a single consumer</label></li>
+  <li><input type="checkbox" id="k6"><label for="k6">All engine interaction goes through Controller (no direct Engine handling)</label></li>
+  <li><input type="checkbox" id="k7"><label for="k7">Adapter (if any) preserves order, publishes nothing while not Active, keeps payloads opaque</label></li>
+  <li><input type="checkbox" id="k8"><label for="k8">tx_rejected_total surfaced as a health metric</label></li>
+  <li><input type="checkbox" id="k9"><label for="k9">Multi-node byte-identical stream test passing in plain cargo test</label></li>
+  <li><input type="checkbox" id="k10"><label for="k10">Clean teardown verified: deactivate or shutdown on every exit path</label></li>
+</ul>
+
+<h2 id="map">Code map</h2>
+<div class="tablewrap"><table>
+  <tr><th>Concern</th><th>Path in tessera</th></tr>
+  <tr><td>Public API and module tour</td><td><code>vertex_core/src/lib.rs</code>, <code>vertex_core/README.md</code></td></tr>
+  <tr><td>Lifecycle orchestration + engine thread</td><td><code>vertex_core/src/controller.rs</code></td></tr>
+  <tr><td>Config, options mirror, peer spec parsing</td><td><code>vertex_core/src/config.rs</code></td></tr>
+  <tr><td>Bounded channels (the bridge)</td><td><code>vertex_core/src/bridge.rs</code></td></tr>
+  <tr><td>The two cooperative engine tasks</td><td><code>vertex_core/src/engine_task.rs</code></td></tr>
+  <tr><td>FFI-safe event conversion, time pinning</td><td><code>vertex_core/src/convert.rs</code></td></tr>
+  <tr><td>Lifecycle state machine (pure)</td><td><code>vertex_core/src/lifecycle.rs</code></td></tr>
+  <tr><td>Status counters</td><td><code>vertex_core/src/status.rs</code></td></tr>
+  <tr><td>Runtime-linking fix</td><td><code>vertex_core/build.rs</code></td></tr>
+  <tr><td>The tests to copy</td><td><code>vertex_core/tests/{single_node, multi_node, lifecycle_behavior, tx_saturation}.rs</code></td></tr>
+  <tr><td>The reference adapter</td><td><code>vertex_ros2/src/{main, node, params}.rs</code></td></tr>
+</table></div>
+
+<footer>Volume 3 of 3. I wrote this against vertex_core as shipped in tessera v0.1.0. Volume 1 covers the concepts and protocol design, Volume 2 the fleet API most projects should build on. Read those first if you have not.</footer>
+</main>
+</div>
+
+<script>
+// copy buttons
+document.querySelectorAll('.code').forEach(block => {
+  const btn = block.querySelector('.copy');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    navigator.clipboard.writeText(block.querySelector('pre').innerText.trim()).then(() => {
+      btn.textContent = 'Copied';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+    });
+  });
+});
+
+// scroll spy
+const links = [...document.querySelectorAll('nav a')];
+const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+const spy = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
+  });
+}, { rootMargin: '-10% 0px -75% 0px' });
+targets.forEach(t => spy.observe(t));
+
+// ---- stack explorer ----
+const LAYERS = [
+  {
+    id: 'l3', color: 'var(--l3)', tag: 'yours', name: 'Your application',
+    role: 'proposals in, folded state out',
+    what: ['Encodes decisions as opaque payload records', 'Folds the ordered event stream into replicated state', 'Acts on the derived state (drive, allocate, converge)'],
+    when: 'Always yours to write. Volumes 1 and 2 cover this layer end to end.'
+  },
+  {
+    id: 'l2', color: 'var(--l2)', tag: 'adapter', name: 'Adapter (vertex_ros2 is the reference)',
+    role: 'middleware ⇄ Controller',
+    what: ['Maps transport ingress to controller.submit()', 'Pump threads forward EventRecords in order to your transport', 'Exposes lifecycle verbs as an RPC + publishes the current state', 'Surfaces StatusSnapshot as diagnostics'],
+    when: 'Target this layer when your project is not ROS 2 and not plain Rust: write ~3 files against your own middleware (section 5).'
+  },
+  {
+    id: 'l1', color: 'var(--l1)', tag: 'vertex_core', name: 'vertex_core (plain cargo crate)',
+    role: 'lifecycle, engine thread, channels',
+    what: ['Controller: configure / activate / submit / deactivate', 'Dedicated engine thread (handles are !Send)', 'Cancellation-safe receive design (recv_message is not cancel-safe)', 'Bounded bridge channels with visible backpressure', 'FFI-safe copies: EventRecord, time pinning'],
+    when: 'Target this layer when your process can be Rust: embed Controller directly, no ROS anywhere (sections 1 to 4).'
+  },
+  {
+    id: 'l0', color: 'var(--l0)', tag: 'engine', name: 'tashi-vertex-rs + libtashi-vertex',
+    role: 'the consensus engine itself',
+    what: ['Hashgraph-family aBFT: gossip about gossip, virtual voting', 'UDP transport, hole punching, dynamic epoch sizing', 'Rust bindings over the C library, move-only Transaction type'],
+    when: 'Target directly only if you cannot take the vertex_core Tokio dependency. You then own every constraint in section 4 yourself.'
+  },
+];
+const layersEl = document.getElementById('layers');
+const infoEl = document.getElementById('layerinfo');
+LAYERS.forEach((l, i) => {
+  const d = document.createElement('div');
+  d.className = 'layer'; d.tabIndex = 0; d.setAttribute('role', 'tab'); d.dataset.i = i;
+  d.innerHTML = `<span class="tag" style="background:${l.color}">${l.tag}</span><b>${l.name}</b><span class="role">${l.role}</span>`;
+  layersEl.appendChild(d);
+});
+function selLayer(i) {
+  [...layersEl.children].forEach((c, j) => c.classList.toggle('sel', j === i));
+  const l = LAYERS[i];
+  infoEl.innerHTML = `<h4>${l.name}</h4><ul>${l.what.map(w => `<li>${w}</li>`).join('')}</ul>` +
+    `<span class="when">${l.when}</span>`;
+}
+layersEl.addEventListener('click', e => {
+  const t = e.target.closest('.layer'); if (t) selLayer(+t.dataset.i);
+});
+layersEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    const t = e.target.closest('.layer');
+    if (t) { e.preventDefault(); selLayer(+t.dataset.i); }
+  }
+});
+selLayer(2);
+
+// ---- decision helper ----
+const picks = { ros: null, rust: null };
+const recbox = document.getElementById('recbox');
+document.querySelectorAll('.decide .opts').forEach(row => {
+  row.addEventListener('click', e => {
+    const b = e.target.closest('.opt'); if (!b) return;
+    [...row.children].forEach(c => c.classList.remove('picked'));
+    b.classList.add('picked');
+    picks[row.dataset.q] = b.dataset.v;
+    if (picks.ros && picks.rust) {
+      let rec;
+      if (picks.ros === 'yes') {
+        rec = '<b>Use vertex_node as-is (level 0).</b> Launch one vertex_node per agent and build on the topic contract. That is Volume 2 (the fleet API tutorial), top to bottom. Come back here only if you need to customize the adapter itself.';
+      } else if (picks.rust === 'yes') {
+        rec = '<b>Embed vertex_core (level 1).</b> Add the path dependencies, own a Controller per node, and follow sections 1 to 4. You inherit the engine-thread and cancellation-safety design for free.';
+      } else {
+        rec = '<b>Write a thin adapter (level 2).</b> Put a small Rust process next to your system: Controller inside, your middleware on the outside. Section 5 is the pattern, vertex_ros2 is the reference implementation, and sections 1 to 4 still apply to the Rust core of it.';
+      }
+      recbox.innerHTML = rec;
+      recbox.classList.add('show');
+    }
+  });
+});
+</script>
+
+</body>
+</html>

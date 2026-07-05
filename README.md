@@ -12,6 +12,12 @@ implementation.
 > The project is named *tessera* (a single tile in a mosaic): each consensus
 > event is one ordered tile; together they form the agreed-upon history.
 
+**Documentation:** a three-volume tutorial series lives in [`docs/`](docs/)
+(servable with GitHub Pages): concepts and protocol design, building on the
+`vertex_fleet` API, and crate-level embedding. Consumers start at
+[`CONSUMING.md`](CONSUMING.md); the full worked example is the
+[route-exploration simulation](vertex_ros2/test/simulation/).
+
 ---
 
 ## Why the split into two Rust crates
