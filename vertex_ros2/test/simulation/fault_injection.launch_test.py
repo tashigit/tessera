@@ -37,6 +37,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from vertex_ros2_msgs.msg import VertexEvent
+from vertex_ros2_msgs.srv import VertexStatus
 
 HERE = os.path.dirname(__file__)
 PEERS_PATH = os.path.join(HERE, "fixtures", "peers4.json")
@@ -164,6 +165,30 @@ class TestFaultInjection(unittest.TestCase):
             if all(latest[i] and i in latest[i].get("arrived", [])
                    for i in SURVIVORS):
                 break
+        else:
+            # About to fail: an intermittent post-crash consensus liveness
+            # stall has been observed here (survivors' engines silently stop
+            # finalizing after the kill). Dump each survivor's engine counters
+            # so a stalled run tells us whether submissions kept reaching the
+            # engines while no events came back.
+            for i in SURVIVORS:
+                cli = self.node.create_client(
+                    VertexStatus, f"/robot_{i}/vertex/status")
+                if not cli.wait_for_service(timeout_sec=2.0):
+                    print(f"[diag] robot_{i}: status service unavailable")
+                    continue
+                fut = cli.call_async(VertexStatus.Request())
+                rclpy.spin_until_future_complete(self.node, fut, timeout_sec=5.0)
+                r = fut.result()
+                if r is not None:
+                    print(f"[diag] robot_{i} engine: running={r.running} "
+                          f"peers={r.peer_count} "
+                          f"tx_submitted={r.tx_submitted_total} "
+                          f"tx_rejected={r.tx_rejected_total} "
+                          f"events_published={r.events_published_total} "
+                          f"last_error={r.last_error_code}:"
+                          f"{r.last_error_message!r}")
+                self.node.destroy_client(cli)
 
         winners = set()
         for i in SURVIVORS:
