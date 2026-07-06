@@ -50,6 +50,16 @@ VICTIM = 2                      # home lane R3: claims the open route, then dies
 LEASE_SEC = 8.0
 SURVIVORS = [i for i in range(4) if i != VICTIM]
 
+# Experiment knobs (env-driven, defaults preserve normal behavior). Used to
+# characterize the intermittent post-crash liveness stall: vary the engine's
+# fallen-behind kick window and epoch sizing, delay the kill, and shorten the
+# completion deadline so stall-rate sweeps run in reasonable time.
+FI_KICK_S = os.environ.get("FI_KICK_S")                    # engine kick window
+FI_DYN_EPOCH = os.environ.get("FI_DYN_EPOCH")              # "0" disables
+FI_THROTTLE_MS = os.environ.get("FI_THROTTLE_MS")          # ack-latency throttle
+FI_KILL_DELAY = float(os.environ.get("FI_KILL_DELAY", "0"))
+FI_PHASE3_DEADLINE = float(os.environ.get("FI_PHASE3_DEADLINE", "120"))
+
 
 def _load_peers():
     if not os.path.exists(PEERS_PATH):
@@ -78,7 +88,15 @@ def generate_test_description():
                 "vertex.secret_key_base58": me["secret"],
                 "vertex.peers": peer_specs,
                 "options.heartbeat_us": 50000,
-            }],
+            }
+            | ({"options.fallen_behind_kick_s": int(FI_KICK_S)}
+               if FI_KICK_S else {})
+            | ({"options.enable_dynamic_epoch_size": FI_DYN_EPOCH != "0"}
+               if FI_DYN_EPOCH is not None else {})
+            | ({"options.throttle_ack_latency_ms": int(FI_THROTTLE_MS),
+                "options.max_ack_latency_ms": int(FI_THROTTLE_MS),
+                "options.reset_ack_latency_ms": 2 * int(FI_THROTTLE_MS)}
+               if FI_THROTTLE_MS else {})],
             output="screen",
         )
         coordinator = launch_ros.actions.Node(
@@ -155,11 +173,15 @@ class TestFaultInjection(unittest.TestCase):
         # Phase 2: crash the whole victim robot (engine, coordinator, body).
         # It froze at x=-1.0 so it has reported neither blocked nor arrived:
         # R3 is held by a dead robot.
+        if FI_KILL_DELAY > 0:                    # experiment: delayed kill
+            settle = time.time() + FI_KILL_DELAY
+            while time.time() < settle:
+                rclpy.spin_once(self.node, timeout_sec=0.1)
         for action in victim_actions:
             os.kill(proc_info[action].pid, signal.SIGKILL)
 
         # Phase 3: survivors must lease-timeout R3, re-claim it, and complete.
-        deadline = time.time() + 120.0
+        deadline = time.time() + FI_PHASE3_DEADLINE
         while time.time() < deadline:
             rclpy.spin_once(self.node, timeout_sec=0.1)
             if all(latest[i] and i in latest[i].get("arrived", [])
