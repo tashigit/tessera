@@ -92,6 +92,14 @@ gen_peers4() {
   fi
 }
 
+gen_peers5() {
+  if [ ! -f "${TESSERA}/vertex_ros2/test/simulation_arena/fixtures/peers5.json" ]; then
+    echo "==> generating simulation fixtures/peers5.json"
+    ( VERTEX_RS="${VERTEX_RS}" bash \
+        "${TESSERA}/vertex_ros2/test/simulation_arena/fixtures/gen_peers5.sh" )
+  fi
+}
+
 case "${1:-test}" in
   core)
     run_core
@@ -160,6 +168,23 @@ case "${1:-test}" in
     done
     echo "==> launch_test: lifecycle churn (deactivate/activate mid-mission)"
     launch_test "${TESSERA}/vertex_ros2/test/simulation/lifecycle_churn.launch_test.py"
+    gen_peers5
+    echo "==> arena_fsm unit tests (simulation 2)"
+    python3 "${TESSERA}/vertex_ros2/test/simulation_arena/nodes/test_arena_fsm.py"
+    echo "==> launch_test: arena exploration (5x vertex_node + coordinator + mock_pioneer)"
+    launch_test "${TESSERA}/vertex_ros2/test/simulation_arena/arena_exploration.launch_test.py"
+    ;;
+  simarena)
+    # Arena-exploration simulation (simulation 2), container side. Webots runs
+    # NATIVELY on the host with worlds/pioneer_arena.wbt; this serves rosbridge
+    # + 5x vertex_node + 5x arena_coordinator. Run with:
+    #   docker compose run --rm --service-ports sim simarena
+    build_ros
+    export_tv_libpath
+    gen_peers5
+    echo "==> simarena: rosbridge (9090) + 5x vertex_node + 5x arena_coordinator"
+    echo "    On the host: open vertex_ros2/test/simulation_arena/worlds/pioneer_arena.wbt in Webots."
+    ros2 launch "${TESSERA}/vertex_ros2/test/simulation_arena/arena_exploration.launch.py"
     ;;
   simsoak)
     # Randomized back-to-back mission soak (N5). SOAK_SECONDS overrides length.

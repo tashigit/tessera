@@ -9,7 +9,9 @@ one Vertex session, the SEQUENCE OF EVENT HASHES in the four files must be
 identical (each node may be a few events ahead/behind at shutdown — prefixes are
 compared).
 
-Usage:  python3 nodes/verify_consensus_logs.py [logs-dir]
+Usage:  python3 nodes/verify_consensus_logs.py [logs-dir] [pattern]
+`pattern` defaults to robot_*_consensus.log (route exploration); the arena
+scenario writes robot_*_arena.log, so pass that to verify its runs.
 Exit 0 and "CONSENSUS VERIFIED" if all common prefixes match; exit 1 otherwise.
 """
 
@@ -30,7 +32,8 @@ def hash_sequence(path: Path):
 def main():
     log_dir = Path(sys.argv[1] if len(sys.argv) > 1
                    else Path(__file__).resolve().parent.parent / "logs")
-    files = sorted(log_dir.glob("robot_*_consensus.log"))
+    pattern = sys.argv[2] if len(sys.argv) > 2 else "robot_*_consensus.log"
+    files = sorted(log_dir.glob(pattern))
     if len(files) < 2:
         print(f"need >=2 log files in {log_dir}, found {len(files)}")
         return 1

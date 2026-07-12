@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Porting a broker-based fleet to Vertex consensus</title>
+<style>
+  :root {
+    --paper: #f7f6f8;
+    --ink: #241f27;
+    --muted: #675f6d;
+    --line: #e1dde5;
+    --accent: #7a3e78;
+    --accent-soft: #f0e4ef;
+    --code-bg: #221c24;
+    --code-ink: #e5dfe8;
+    --code-dim: #968b9b;
+    --good: #1a7f37;
+    --bad: #b3402f;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    --sans: "Avenir Next", "Segoe UI", -apple-system, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.65; }
+  .wrap { display: flex; max-width: 1200px; margin: 0 auto; }
+
+  nav { width: 232px; flex: none; position: sticky; top: 0; align-self: flex-start;
+    max-height: 100vh; overflow-y: auto; padding: 40px 20px 40px 28px;
+    font-family: var(--sans); font-size: 13px; border-right: 1px solid var(--line);
+    box-sizing: border-box; }
+  nav .brand { font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    font-size: 11px; color: var(--accent); margin-bottom: 18px; }
+  nav a { display: block; color: var(--muted); text-decoration: none;
+    padding: 5px 8px; border-left: 2px solid transparent; margin-left: -10px; line-height: 1.35; }
+  nav a:hover { color: var(--ink); }
+  nav a:focus-visible { outline: 2px solid var(--accent); border-radius: 3px; }
+
+  main { flex: 1; min-width: 0; padding: 48px 56px 120px; box-sizing: border-box; }
+  @media (max-width: 900px) { nav { display: none; } main { padding: 32px 20px 80px; } }
+
+  header.doc h1 { font-family: var(--sans); font-weight: 700; font-size: 34px;
+    line-height: 1.15; letter-spacing: -0.015em; margin: 8px 0 14px; text-wrap: balance; }
+  .eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  .lede { font-size: 19px; color: #443c47; max-width: 62ch; }
+  h2 { font-family: var(--sans); font-weight: 700; font-size: 24px;
+    letter-spacing: -0.01em; margin: 64px 0 8px; text-wrap: balance; scroll-margin-top: 24px; }
+  h2 .stepno { font-size: 12px; font-weight: 600; letter-spacing: .12em;
+    color: var(--accent); text-transform: uppercase; display: block; margin-bottom: 4px; }
+  h3 { font-family: var(--sans); font-size: 17px; margin: 30px 0 6px; scroll-margin-top: 24px; }
+  p, ul, ol { max-width: 66ch; }
+  li { margin-bottom: 5px; }
+  a { color: var(--accent); }
+  strong { color: #171219; }
+  .note { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    background: var(--accent-soft); padding: 12px 16px; max-width: 62ch;
+    font-size: 15.5px; border-radius: 0 6px 6px 0; margin: 18px 0; }
+  .warstory { border-left-color: var(--bad); background: #f6e6e2; }
+
+  .tablewrap { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; font-family: var(--sans); font-size: 14px; min-width: 560px; }
+  th { text-align: left; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  th, td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td code, p code, li code, .note code { font-family: var(--mono); font-size: .85em;
+    background: #eae5ec; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+
+  .code { position: relative; background: var(--code-bg); color: var(--code-ink);
+    border-radius: 8px; margin: 16px 0; font-size: 13.5px; }
+  .code .lang { position: absolute; top: 9px; left: 14px; font-family: var(--sans);
+    font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--code-dim); }
+  .code button.copy { position: absolute; top: 6px; right: 8px; font-family: var(--sans);
+    font-size: 11px; padding: 3px 10px; border-radius: 5px;
+    border: 1px solid #423947; background: transparent; color: var(--code-dim); cursor: pointer; }
+  .code button.copy:hover { color: var(--code-ink); border-color: var(--code-dim); }
+  .code button.copy:focus-visible { outline: 2px solid var(--accent); }
+  .code pre { margin: 0; padding: 34px 18px 16px; overflow-x: auto;
+    font-family: var(--mono); line-height: 1.55; }
+  .code .c { color: #8d8292; }
+  .code .k { color: #d9a3d0; }
+  .code .s { color: #a9c98e; }
+
+  .beforeafter { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+  @media (max-width: 760px) { .beforeafter { grid-template-columns: 1fr; } }
+  .ba { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 14px 16px;
+    font-family: var(--sans); font-size: 14px; }
+  .ba h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+  .ba.before h4 { color: var(--bad); }
+  .ba.after h4 { color: var(--good); }
+  .ba ul { padding-left: 18px; margin: 0; }
+
+  /* ---- health verdict playground ---- */
+  .sand { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 20px; margin: 22px 0; font-family: var(--sans); }
+  .sand h3 { margin: 0 0 2px; font-size: 16px; }
+  .sand .sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; max-width: 70ch; }
+  .sandgrid { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(250px, 1fr); gap: 16px; }
+  @media (max-width: 700px) { .sandgrid { grid-template-columns: 1fr; } }
+  .sand .loglist { font-family: var(--mono); font-size: 11.5px; background: var(--code-bg);
+    color: var(--code-dim); border-radius: 8px; padding: 10px 12px; height: 190px;
+    overflow-y: auto; line-height: 1.7; }
+  .sand .loglist .seq { color: #6d6172; }
+  .sand .loglist .applied { color: var(--code-ink); }
+  .sand .loglist .noop { text-decoration: line-through; opacity: .65; }
+  .sand .statebox { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+    font-size: 13.5px; background: #fbfafc; }
+  .sand .bot { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .sand .bot .who { margin-left: auto; font-family: var(--mono); font-size: 12px;
+    padding: 1px 8px; border-radius: 999px; color: #fff; }
+  .sand .bot .who.ok { background: var(--good); }
+  .sand .bot .who.out { background: var(--bad); }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .sand button.act { font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+    padding: 5px 11px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); cursor: pointer; }
+  .sand button.act:hover { border-color: var(--accent); color: var(--accent); }
+  .sand button.act:focus-visible { outline: 2px solid var(--accent); }
+  .sand .toast { font-size: 12.5px; min-height: 18px; margin-top: 8px; color: var(--muted); }
+
+  .checklist { list-style: none; padding: 0; max-width: 70ch; font-family: var(--sans); font-size: 15px; }
+  .checklist li { display: flex; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); align-items: baseline; }
+  .checklist input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; transform: translateY(2px); }
+  .checklist label { cursor: pointer; }
+  .checklist input:checked + label { color: var(--muted); text-decoration: line-through; }
+
+  .kicker { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .series { font-family: var(--sans); font-size: 13px; border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 14px; margin: 18px 0; background: #fff; max-width: 62ch; }
+  .series b { color: var(--accent); }
+  .series a { text-decoration: none; }
+
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-family: var(--sans); font-size: 13px; color: var(--muted); max-width: 66ch; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav aria-label="Contents">
+  <div class="brand">Tessera / Porting</div>
+  <a href="#fit">Where this fits</a>
+  <a href="#system">The system being ported</a>
+  <a href="#method">The porting method</a>
+  <a href="#s1">1 · Inventory the broker topics</a>
+  <a href="#s2">2 · Design the records</a>
+  <a href="#s3">3 · Write the fold</a>
+  <a href="#health">The health fold, live</a>
+  <a href="#s4">4 · Write the agent</a>
+  <a href="#s5">5 · Reconnect the body</a>
+  <a href="#s6">6 · Run and verify</a>
+  <a href="#tests">What the tests assert</a>
+  <a href="#pitfalls">Pitfalls</a>
+  <a href="#checklist">Checklist</a>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">Tutorial · Volume 4 · Porting</div>
+  <h1>Porting a broker-based fleet to Vertex consensus</h1>
+  <p class="lede">Many multi-robot systems already coordinate through a message broker: MQTT topics for shared state, plus a hand-rolled voting protocol for anything that needs agreement. This volume ports one, end to end. The result ships in the repository as the second simulation: five Pioneer 3-AT robots sweeping an outdoor arena, with every shared decision derived from the ordered log.</p>
+  <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;<a href="concepts.html">Concepts and protocol design</a> &nbsp;→&nbsp; 2&nbsp;·&nbsp;<a href="fleet-api.html">The fleet API</a> &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> &nbsp;→&nbsp; 4&nbsp;·&nbsp;Porting (you are here). Read Volume&nbsp;2 first: this volume assumes the two base classes and shows how an existing design maps onto them.</div>
+  <p class="kicker">You need: the tessera workspace built (Volume 2, step 1), Docker for the headless run, and optionally Webots R2025a for the live world.</p>
+</header>
+
+<h2 id="fit">Where this fits</h2>
+<p>Volumes 1 to 3 build protocols from scratch. This one starts from a working system with a different transport and asks the porting question: which parts move, which parts stay, and which parts simply disappear. The answer is the same for most broker-based fleets, so the worked example doubles as a template.</p>
+<p>Everything here runs against real consensus in CI. The code lives in its own directory, <code>vertex_ros2/test/simulation_arena/</code>: the fold in <code>nodes/arena_fsm.py</code>, the agent in <code>nodes/arena_coordinator.py</code>, the world in <code>worlds/pioneer_arena.wbt</code>, and the design document in its <code>README.md</code>. The route-exploration scenario from Volumes 1 to 3 sits beside it in <code>vertex_ros2/test/simulation/</code>.</p>
+
+<h2 id="system">The system being ported</h2>
+<p>The source system is a classic MQTT-coordinated exploration stack. Five Pioneer 3-AT robots explore an arena of trees, rocks, pits, and the occasional deer. Each robot runs a local autonomy loop (mapping, goal selection, path following), and everything cross-robot rides a four-broker MQTT cluster:</p>
+<ul>
+  <li>frontier and path sharing on <code>coordination/#</code> topics,</li>
+  <li>mission status and territory on <code>robots/robot_i/#</code> topics,</li>
+  <li>and a <strong>telemetry-health voting protocol</strong>: every robot publishes sensor-stream snapshots, initiates votes on them, tallies YES/NO responses from its peers against a 4-of-5 threshold, and gates object detections on the outcome, so a robot with a dead camera cannot poison the shared picture.</li>
+</ul>
+<p>Two details matter for the port. First, the voting protocol exists <em>because</em> a broker offers pub/sub but no agreement primitive, so agreement had to be built on top, with request IDs, tallies, partial-consensus timers, and TTLs. Second, that protocol only works because the broker delivers messages to every subscriber in the same order. The predecessor's own documentation says so explicitly: it relies on the transport's total ordering for state machine replication. The ordering engine under that broker is the same Tashi consensus this integration exposes directly. The port removes the middleman.</p>
+
+<h2 id="method">The porting method</h2>
+<p>One sorting rule drives the whole port. For every piece of data the broker carried, ask: <strong>must the fleet agree on it, or does each robot only need to hear about it?</strong></p>
+<div class="beforeafter">
+  <div class="ba before"><h4>Broker system</h4><ul>
+    <li>4-broker MQTT cluster, credentials, bridge node per robot</li>
+    <li>vote/tally protocol: request IDs, thresholds, partial-consensus timers, TTLs</li>
+    <li>per-robot bridge tables mapping ROS topics to MQTT topics and back</li>
+    <li>ordering an implicit property of the transport</li>
+  </ul></div>
+  <div class="ba after"><h4>Consensus port</h4><ul>
+    <li>one <code>vertex_node</code> per robot, peered over UDP, no server</li>
+    <li>agreement is the transport: one <code>ReplicatedState</code> fold</li>
+    <li>one agent class proposing records, one fold consuming them</li>
+    <li>ordering explicit, byte-identical, and asserted in CI</li>
+  </ul></div>
+</div>
+<p>Three destinations for every broker topic:</p>
+<ol>
+  <li><strong>Stays robot-local.</strong> High-rate sensor and control data that no other robot needs verbatim: lidar scans, camera frames, wheel commands. These never touch consensus. They stay ordinary ROS topics inside the robot's namespace.</li>
+  <li><strong>Becomes a record.</strong> Anything that changes shared state: task claims, task outcomes, health, sightings. These become small JSON records proposed into the log and folded by everyone.</li>
+  <li><strong>Disappears.</strong> Every mechanism that existed to <em>approximate</em> agreement over pub/sub: the vote messages, the tallies, the request TTLs, the result broadcasts. The ordered log makes them redundant.</li>
+</ol>
+<div class="note">The predecessor also carried each robot's occupancy grid and full planned paths through the broker. That is category 1 thinking trapped in a category 2 transport: peers consumed them as advisory context, never as agreed state. The port replaces the grid-and-frontier machinery with a fixed sector grid so that the <em>shared</em> thing (who sweeps where) is a claim, which is category 2, and everything else stays local. When you port your own system, expect to re-draw this line rather than copy topics one for one.</div>
+
+<h2 id="s1"><span class="stepno">Step 1</span>Inventory the broker topics</h2>
+<p>The full mapping for this system:</p>
+<div class="tablewrap"><table>
+  <tr><th>Broker topic</th><th>Carried</th><th>Fate in the port</th></tr>
+  <tr><td><code>coordination/frontiers</code></td><td>frontier candidates per robot</td><td>becomes the <code>claim</code> record on a fixed sector grid</td></tr>
+  <tr><td><code>coordination/paths</code></td><td>full planned paths</td><td>stays local (advisory data nobody agreed on)</td></tr>
+  <tr><td><code>robots/i/status</code></td><td>mission status</td><td>derived: everyone computes phase from the fold</td></tr>
+  <tr><td><code>robots/i/territory</code></td><td>territory ownership</td><td>subsumed by exclusive sector claims</td></tr>
+  <tr><td><code>robots/i/consensus_vote</code></td><td>health vote requests + responses</td><td><strong>disappears</strong>: replaced by the <code>health</code> beacon fold</td></tr>
+  <tr><td><code>robots/i/consensus_result</code></td><td>vote outcomes</td><td><strong>disappears</strong>: every robot already derived it</td></tr>
+  <tr><td>detections (in status)</td><td>object sightings</td><td>becomes the <code>detection</code> record, gated on folded health</td></tr>
+</table></div>
+
+<h2 id="s2"><span class="stepno">Step 2</span>Design the records</h2>
+<p>Seven operations cover the scenario. All carry <code>epoch</code>, and <code>reset</code> comes free with the base class:</p>
+<div class="code"><span class="lang">jsonc</span><button class="copy">Copy</button><pre>
+{ <span class="s">"op"</span>: <span class="s">"claim"</span>,       <span class="s">"bot"</span>: 2, <span class="s">"sector"</span>: <span class="s">"S07"</span>, <span class="s">"epoch"</span>: 0 }
+{ <span class="s">"op"</span>: <span class="s">"explored"</span>,    <span class="s">"bot"</span>: 2, <span class="s">"sector"</span>: <span class="s">"S07"</span>, <span class="s">"epoch"</span>: 0 }
+{ <span class="s">"op"</span>: <span class="s">"abandon"</span>,     <span class="s">"bot"</span>: 2, <span class="s">"sector"</span>: <span class="s">"S07"</span>, <span class="s">"epoch"</span>: 0 }
+{ <span class="s">"op"</span>: <span class="s">"unreachable"</span>, <span class="s">"bot"</span>: 2, <span class="s">"sector"</span>: <span class="s">"S07"</span>, <span class="s">"epoch"</span>: 0 }
+{ <span class="s">"op"</span>: <span class="s">"health"</span>,      <span class="s">"bot"</span>: 2, <span class="s">"seq"</span>: 41, <span class="s">"ok"</span>: <span class="k">true</span>, <span class="s">"epoch"</span>: 0 }
+{ <span class="s">"op"</span>: <span class="s">"suspect"</span>,     <span class="s">"bot"</span>: 3, <span class="s">"victim"</span>: 2, <span class="s">"seen_seq"</span>: 41, <span class="s">"epoch"</span>: 0 }
+{ <span class="s">"op"</span>: <span class="s">"detection"</span>,   <span class="s">"bot"</span>: 1, <span class="s">"seq"</span>: 0, <span class="s">"label"</span>: <span class="s">"deer"</span>, <span class="s">"x"</span>: -14.6, <span class="s">"y"</span>: 9.6, <span class="s">"epoch"</span>: 0 }
+</pre></div>
+<p>The design moves worth stealing:</p>
+<ul>
+  <li><strong>The health beacon is self-assessed and sequenced.</strong> Each robot checks its own sensor-stream freshness locally (lidar age, camera age) and folds the verdict as a beacon with a monotonic <code>seq</code>. The fold ignores stale or duplicate sequences, so redelivery and reordering of proposals by the network cannot corrupt anything.</li>
+  <li><strong>Silence needs a second mechanism.</strong> A crashed robot never sends its own not-ok beacon. So any live robot may propose <code>suspect</code>, carrying the victim's last folded <code>seq</code>. The fold acts only if no newer beacon landed first. That one condition makes late beacons void stale suspicions, makes duplicates no-ops, and lets every robot propose concurrently without coordination. It is the same shape as the route scenario's lease timeout in Volume 1.</li>
+  <li><strong>Gating is a fold rule, not a check at the sender.</strong> A <code>detection</code> is accepted only if its reporter is healthy <em>at that point in the log</em>. Every robot applies the rule to the same ordered stream, so every robot keeps the identical detection list. The predecessor needed a full voting round to make this call.</li>
+</ul>
+
+<h2 id="s3"><span class="stepno">Step 3</span>Write the fold</h2>
+<p>The whole shared state is one <code>ReplicatedState</code> subclass, pure and unit-testable on any host with no ROS. The claim rule shows the flavor:</p>
+<div class="code"><span class="lang">python · nodes/arena_fsm.py</span><button class="copy">Copy</button><pre>
+<span class="k">def</span> apply_record(self, rec):
+    op = rec[<span class="s">"op"</span>]
+    bot, sector = rec.get(<span class="s">"bot"</span>), rec.get(<span class="s">"sector"</span>)
+    <span class="k">if</span> op == <span class="s">"claim"</span>:
+        ok = (self.phase == EXPLORING <span class="k">and</span> bot <span class="k">is not</span> <span class="k">None</span>
+              <span class="k">and</span> bot <span class="k">not in</span> self.unhealthy
+              <span class="k">and</span> sector <span class="k">in</span> self.sectors
+              <span class="k">and</span> sector <span class="k">not in</span> self.explored
+              <span class="k">and</span> sector <span class="k">not in</span> self.unreachable
+              <span class="k">and</span> sector <span class="k">not in</span> self.claimed
+              <span class="k">and</span> bot <span class="k">not in</span> self.claimed.values())
+        <span class="k">if</span> ok:
+            self.claimed[sector] = bot
+    <span class="k">elif</span> op == <span class="s">"explored"</span>:
+        <span class="c"># only the claim holder can credit a sector: a bot whose claim</span>
+        <span class="c"># was released must re-claim before reporting</span>
+        <span class="k">if</span> self.claimed.get(sector) == bot:
+            self.explored.add(sector)
+            <span class="k">del</span> self.claimed[sector]
+</pre></div>
+<p>Exclusivity is not enforced anywhere else. There is no lock service and no arbiter node. Two robots may race a claim, and the one whose record lands first in consensus order wins, on every robot, including the loser. The loser's agent sees the fold say so and claims a different sector.</p>
+<p>Compare the health machinery line for line with the predecessor:</p>
+<div class="beforeafter">
+  <div class="ba before"><h4>Before: vote and tally</h4><ul>
+    <li>initiator publishes a snapshot + request ID every 5 s</li>
+    <li>each peer validates freshness, votes YES/NO</li>
+    <li>initiator tallies against 4-of-5, runs a 3 s partial-consensus timer</li>
+    <li>result broadcast back through the broker</li>
+    <li>requests expire on a 20 s TTL</li>
+  </ul></div>
+  <div class="ba after"><h4>After: fold</h4><ul>
+    <li>each robot folds a sequenced <code>health</code> beacon</li>
+    <li>not-ok marks it unhealthy and releases its claim, ok readmits it</li>
+    <li><code>suspect</code> covers silent crashes</li>
+    <li>verdicts identical everywhere by construction, nothing to broadcast</li>
+  </ul></div>
+</div>
+
+<h2 id="health">The health fold, live</h2>
+<div class="sand" id="sandbox">
+  <h3>Health verdict playground</h3>
+  <div class="sub">This is the actual fold logic from <code>arena_fsm.py</code> in your browser. Propose beacons and suspicions for a 3-robot fleet and watch the log and the derived verdicts. Try suspecting robot 2 and then landing its late beacon first: the suspicion becomes a no-op, exactly the crash-versus-slow race the predecessor's TTLs approximated.</div>
+  <div class="sandgrid">
+    <div class="loglist" id="sblog" aria-live="polite"></div>
+    <div>
+      <div class="statebox" id="sbstate"></div>
+      <div class="toast" id="sbtoast"></div>
+    </div>
+  </div>
+  <div class="btnrow" id="sbbtns"></div>
+</div>
+
+<h2 id="s4"><span class="stepno">Step 4</span>Write the agent</h2>
+<p>The agent is a <code>VertexAgent</code> subclass with the standard split: <code>tick()</code> senses and proposes, the fold mutates, <code>on_state_changed()</code> reacts. Porting adds three loops the predecessor ran as separate nodes:</p>
+<div class="code"><span class="lang">python · nodes/arena_coordinator.py (tick, abridged)</span><button class="copy">Copy</button><pre>
+<span class="k">def</span> tick(self):
+    <span class="c"># 1. the health beacon: the predecessor's telemetry_monitor_node,</span>
+    <span class="c">#    reduced to one sequenced self-assessment</span>
+    <span class="k">if</span> beacon_due:
+        self._health_seq += 1
+        self._emit({<span class="s">"op"</span>: <span class="s">"health"</span>, <span class="s">"bot"</span>: self.my_id,
+                    <span class="s">"seq"</span>: self._health_seq, <span class="s">"ok"</span>: self._self_ok()})
+
+    <span class="c"># 2. the silence lease: suspect a peer whose beacons stopped</span>
+    <span class="k">for</span> b <span class="k">in</span> silent_peers:
+        self._emit({<span class="s">"op"</span>: <span class="s">"suspect"</span>, <span class="s">"bot"</span>: self.my_id, <span class="s">"victim"</span>: b,
+                    <span class="s">"seen_seq"</span>: self.state.health_seq.get(b, -1)})
+
+    <span class="c"># 3. physical outcomes for my claimed sector, then the claim loop</span>
+    <span class="k">if</span> covered:  self._emit({<span class="s">"op"</span>: <span class="s">"explored"</span>, ...})
+    <span class="k">elif</span> stalled: self._emit({<span class="s">"op"</span>: <span class="s">"abandon"</span> <span class="k">or</span> <span class="s">"unreachable"</span>, ...})
+    <span class="k">if</span> idle_and_healthy <span class="k">and</span> claim_due:
+        self._emit({<span class="s">"op"</span>: <span class="s">"claim"</span>, <span class="s">"bot"</span>: self.my_id,
+                    <span class="s">"sector"</span>: nearest_free_sector})
+</pre></div>
+<p>Note what the agent never does: it never marks anyone unhealthy, never grants itself a sector, never decides a detection is trusted. It only proposes. Every verdict comes back out of the fold, or it does not happen. That discipline is what the library's single-mutation-path rule buys you, and it is the structural difference from the predecessor, where each node kept its own <code>active_requests</code> bookkeeping and trusted it.</p>
+
+<h2 id="s5"><span class="stepno">Step 5</span>Reconnect the body</h2>
+<p>The predecessor's Webots controllers exchanged sensor data with ROS through polled files in <code>/tmp</code>. That cannot cross the container boundary in the tessera split (native Webots on the host, the ROS and Vertex graph in Docker), and it was always a latency tax. The port keeps only the Webots <em>assets</em>: the arena world and the five Pioneer 3-AT robots with their Sick LMS 291 lidars and webcams. Each robot gains a GPS and an inertial unit, and a new controller (<code>controllers/pioneer_explorer/</code>) bridges over rosbridge's WebSocket exactly like the route scenario's follower:</p>
+<div class="tablewrap"><table>
+  <tr><th>Node</th><th>Where</th><th>Pub</th><th>Sub</th></tr>
+  <tr><td><code>pioneer_explorer</code></td><td>Mac (Webots)</td><td><code>/robot_i/pose</code>, <code>/robot_i/telemetry</code></td><td><code>/robot_i/goto</code></td></tr>
+  <tr><td><code>arena_coordinator</code></td><td>container</td><td><code>/robot_i/vertex/tx</code>, <code>/robot_i/goto</code>, <code>/robot_i/mission_state</code></td><td><code>/robot_i/vertex/event</code>, <code>/robot_i/pose</code>, <code>/robot_i/telemetry</code>, <code>/robot_i/detection</code></td></tr>
+  <tr><td><code>vertex_node</code></td><td>container</td><td><code>/robot_i/vertex/event</code></td><td><code>/robot_i/vertex/tx</code></td></tr>
+</table></div>
+<p>The <code>telemetry</code> topic carries per-stream sensor ages. The agent turns them into its health beacon, which is the live path from a dying camera to a fleet-wide, agreed, reversible verdict. Headless, <code>nodes/mock_pioneer.py</code> stands in for Webots with straight-line kinematics, a scripted sensor outage, and planted detections, so CI asserts the whole loop against real consensus with no simulator.</p>
+
+<h2 id="s6"><span class="stepno">Step 6</span>Run and verify</h2>
+<p>Headless, in the container (this is also part of <code>simtest</code>, which CI runs on every push):</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+docker compose run --rm sim simtest
+<span class="c"># or, inside the container, just this scenario:</span>
+python3 vertex_ros2/test/simulation_arena/nodes/test_arena_fsm.py
+launch_test vertex_ros2/test/simulation_arena/arena_exploration.launch_test.py
+</pre></div>
+<p>Live, with the ported world in native Webots. The 3D view shows only the robots, as a real deployment would; the shared fold is observed from any node's <code>mission_state</code> stream and the per-node consensus logs:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+<span class="c"># terminal 1: rosbridge + 5x vertex_node + 5x arena_coordinator</span>
+docker compose run --rm --service-ports sim simarena
+
+<span class="c"># terminal 2: the arena, in native Webots</span>
+/Applications/Webots.app/Contents/MacOS/webots \
+    vertex_ros2/test/simulation_arena/worlds/pioneer_arena.wbt
+</pre></div>
+<p>After a live run, prove the five robots shared one ordered stream:</p>
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+python3 vertex_ros2/test/simulation/nodes/verify_consensus_logs.py \
+    vertex_ros2/test/simulation/logs <span class="s">'robot_*_arena.log'</span>
+</pre></div>
+
+<h2 id="tests">What the tests assert</h2>
+<p>The headless launch_test scripts a sensor outage on robot 4 (streams die at t=6&nbsp;s, recover at t=45&nbsp;s) and plants two detections, one on a healthy robot and one on robot 4 mid-outage:</p>
+<div class="tablewrap"><table>
+  <tr><th>Property</th><th>Pass condition</th></tr>
+  <tr><td>Full coverage</td><td>every sector explored, <code>phase == done</code>, on all five robots</td></tr>
+  <tr><td>Claim exclusivity</td><td>no snapshot ever shows a robot holding two sectors</td></tr>
+  <tr><td>Health agreement</td><td>the outage verdict observed on every robot, and the final state shows robot 4 readmitted</td></tr>
+  <tr><td>Detection gating</td><td>exactly the healthy detection accepted, identical list everywhere</td></tr>
+  <tr><td>Consensus</td><td>all five <code>/vertex/event</code> streams byte-identical</td></tr>
+  <tr><td>Clean shutdown</td><td>exit codes 0 / <code>-SIGINT</code> / <code>-SIGTERM</code></td></tr>
+</table></div>
+<p>The fold itself has fifteen pure-python unit tests covering the exclusivity rules, holder-only reporting, stale beacon sequences, suspicion races, detection gating, and epoch resets.</p>
+
+<h2 id="pitfalls">Pitfalls</h2>
+<ul>
+  <li><strong>Do not port the vote.</strong> The strongest temptation is transliterating the old protocol, request IDs and all, onto the log. Ask instead what state the vote was computing, then fold that state directly. The entire vote/tally subsystem here compressed into the <code>health</code> and <code>suspect</code> rules.</li>
+  <li><strong>Keep clocks out of the fold.</strong> The predecessor's freshness checks compared wall clocks, which is fine at a proposal site and fatal inside a fold (robots would diverge). Every time-like decision here folds through data: beacon sequences, and suspicions that carry the observed sequence.</li>
+  <li><strong>Only the holder reports.</strong> An <code>explored</code> from a robot whose claim was released mid-sweep (a health blip) must not credit the sector, or coverage could be claimed off stale work. The fold checks the claim, not the reporter's sincerity.</li>
+  <li><strong>Never trust your own proposal.</strong> The agent that proposes a claim does not own the sector until the claim comes back finalized. This falls out of the library, but broker-era code is full of local bookkeeping that assumes its own messages succeeded. Delete it.</li>
+  <li><strong>Category 1 data will try to sneak in.</strong> Resist folding paths, grids, or camera frames. If nobody must agree on it, it does not belong in the log.</li>
+</ul>
+
+<h2 id="checklist">Checklist</h2>
+<ul class="checklist">
+  <li><input type="checkbox" id="c1"><label for="c1">Every broker topic sorted: local, record, or deleted</label></li>
+  <li><input type="checkbox" id="c2"><label for="c2">Records are small, epoch-stamped, and idempotent to fold</label></li>
+  <li><input type="checkbox" id="c3"><label for="c3">The fold is pure: no clocks, no I/O, no randomness</label></li>
+  <li><input type="checkbox" id="c4"><label for="c4">Liveness holes covered (silence lease for crashed proposers)</label></li>
+  <li><input type="checkbox" id="c5"><label for="c5">Trust decisions are fold rules, not sender-side checks</label></li>
+  <li><input type="checkbox" id="c6"><label for="c6">Fold unit-tested on the same-log-same-state property</label></li>
+  <li><input type="checkbox" id="c7"><label for="c7">A headless launch_test drives the whole loop against real consensus</label></li>
+  <li><input type="checkbox" id="c8"><label for="c8">Byte-identical event streams asserted across all peers</label></li>
+</ul>
+
+<footer>Volume 4 of the tessera tutorial series. The ported simulation lives in <code>vertex_ros2/test/simulation_arena/</code>; the route-exploration scenario used across Volumes 1 to 3 sits beside it in <code>vertex_ros2/test/simulation/</code>. Tessera v0.1.0 · Apache-2.0.</footer>
+</main>
+</div>
+
+<script>
+(() => {
+  // copy buttons
+  document.querySelectorAll('.code').forEach(box => {
+    const btn = box.querySelector('button.copy');
+    const pre = box.querySelector('pre');
+    if (!btn || !pre) return;
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(pre.textContent.trim());
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+      } catch (e) { btn.textContent = 'Select + copy'; }
+    });
+  });
+
+  // ---- health verdict playground: the real fold rules from arena_fsm.py ----
+  const N = 3;
+  const state = { seq: {}, unhealthy: new Set(), claimed: {} };
+  const pending = { nextSeq: [0, 0, 0] };
+  const log = [];
+
+  function fold(rec) {
+    // mirrors ArenaState.apply_record for health/suspect/claim
+    if (rec.op === 'health') {
+      if (rec.seq <= (state.seq[rec.bot] ?? -1)) return false;
+      state.seq[rec.bot] = rec.seq;
+      if (rec.ok) state.unhealthy.delete(rec.bot);
+      else markUnhealthy(rec.bot);
+      return true;
+    }
+    if (rec.op === 'suspect') {
+      if ((state.seq[rec.victim] ?? -1) === rec.seen_seq) {
+        markUnhealthy(rec.victim); return true;
+      }
+      return false;
+    }
+    if (rec.op === 'claim') {
+      const ok = !state.unhealthy.has(rec.bot)
+        && !(rec.sector in state.claimed)
+        && !Object.values(state.claimed).includes(rec.bot);
+      if (ok) state.claimed[rec.sector] = rec.bot;
+      return ok;
+    }
+    return false;
+  }
+  function markUnhealthy(bot) {
+    state.unhealthy.add(bot);
+    for (const s of Object.keys(state.claimed))
+      if (state.claimed[s] === bot) delete state.claimed[s];
+  }
+
+  const logEl = document.getElementById('sblog');
+  const stateEl = document.getElementById('sbstate');
+  const toastEl = document.getElementById('sbtoast');
+  const btnsEl = document.getElementById('sbbtns');
+
+  function propose(rec, why) {
+    const applied = fold(rec);
+    log.push({ rec, applied });
+    toastEl.textContent = why + (applied ? '' : ' (folded as a no-op)');
+    render();
+  }
+  function render() {
+    logEl.innerHTML = log.map((e, i) =>
+      `<div class="${e.applied ? 'applied' : 'noop'}">` +
+      `<span class="seq">#${String(i + 1).padStart(2, '0')}</span> ` +
+      `${JSON.stringify(e.rec)}</div>`).join('');
+    logEl.scrollTop = logEl.scrollHeight;
+    let rows = '';
+    for (let b = 0; b < N; b++) {
+      const out = state.unhealthy.has(b);
+      const held = Object.keys(state.claimed).find(s => state.claimed[s] === b);
+      rows += `<div class="bot">robot ${b}` +
+        `${held ? ` · holds ${held}` : ''}` +
+        `<span class="who ${out ? 'out' : 'ok'}">${out ? 'unhealthy' : 'healthy'}</span></div>`;
+    }
+    stateEl.innerHTML = '<b>Fleet verdicts (derived, identical on every robot)</b>' + rows;
+  }
+
+  const acts = [
+    ['robot 2: ok beacon', () => {
+      propose({ op: 'health', bot: 2, seq: pending.nextSeq[2]++, ok: true },
+        'Robot 2 folded a healthy beacon.');
+    }],
+    ['robot 2: not-ok beacon', () => {
+      propose({ op: 'health', bot: 2, seq: pending.nextSeq[2]++, ok: false },
+        'Robot 2 self-reported a dead sensor stream: claims released.');
+    }],
+    ['robot 0 suspects robot 2', () => {
+      propose({ op: 'suspect', bot: 0, victim: 2, seen_seq: state.seq[2] ?? -1 },
+        'Suspicion carries the last folded seq. It acts only if robot 2 stays silent.');
+    }],
+    ['robot 2: late beacon (stale seq)', () => {
+      propose({ op: 'health', bot: 2, seq: (state.seq[2] ?? 0) - 1, ok: true },
+        'A beacon with an old seq: the fold ignores it.');
+    }],
+    ['robot 2 claims S07', () => {
+      propose({ op: 'claim', bot: 2, sector: 'S07' },
+        'Claims from an unhealthy robot are refused by the fold itself.');
+    }],
+    ['robot 1 claims S07', () => {
+      propose({ op: 'claim', bot: 1, sector: 'S07' },
+        'First claim for a free sector in consensus order wins it.');
+    }],
+  ];
+  for (const [label, fn] of acts) {
+    const b = document.createElement('button');
+    b.className = 'act'; b.textContent = label;
+    b.addEventListener('click', fn);
+    btnsEl.appendChild(b);
+  }
+  render();
+})();
+</script>
+
+</body>
+</html>

@@ -7,6 +7,9 @@ describes what is actually built and verified. All five sub-scenarios
 (N1-N5, §4) are implemented, and the headless suite runs in CI.
 Scope: application-level acceptance of the `vertex_ros2` ↔ Vertex consensus
 stack, driven by a fleet of 4 simulated robots in a physics world.
+(A second simulation — five Pioneer 3-AT robots sweeping an outdoor arena
+with consensus-folded health verdicts — lives beside this directory; see
+`../simulation_arena/README.md`.)
 
 Scenario under test: **Consensus-coordinated route exploration**. Four robots
 must get from A to B across a map with four alternative routes, not knowing

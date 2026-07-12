@@ -5,9 +5,11 @@ name: vertex_ros2 CI (Jazzy)
 #   * `test`     — vertex_core cargo test + colcon build + the 3-node launch_test
 #                  (ordering byte-for-byte, no-publish-in-Inactive, lifecycle
 #                  cycle, clean shutdown).
-#   * `sim-test` — the route-exploration simulation suite, headless (mock robots,
-#                  no Webots): parallel exploration, fault injection (lease),
-#                  lifecycle churn — see vertex_ros2/test/simulation/README.md.
+#   * `sim-test` — both simulation suites, headless (mock robots, no Webots):
+#                  route exploration (parallel exploration, fault injection,
+#                  lifecycle churn — vertex_ros2/test/simulation/README.md) and
+#                  arena exploration (sector sweep with consensus health
+#                  gating — vertex_ros2/test/simulation_arena/README.md).
 #   * `soak`     — the 10-minute RSS-growth launch_test, on a nightly schedule,
 #                  plus the randomized mission soak (sim-soak).
 #
@@ -86,8 +88,9 @@ jobs:
         run: docker compose run --rm test
 
   sim-test:
-    # The route-exploration simulation suite, headless (no Webots): fsm unit
-    # tests + N1 exploration + N3 fault injection + N4 lifecycle churn.
+    # Both simulation suites, headless (no Webots): route exploration (fsm
+    # unit tests + N1 exploration + N3 fault injection + N4 lifecycle churn)
+    # and arena exploration (fsm unit tests + the sector-sweep launch_test).
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
