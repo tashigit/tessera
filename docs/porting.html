@@ -228,7 +228,7 @@
 </pre></div>
 <p>The design moves worth stealing:</p>
 <ul>
-  <li><strong>The health beacon is self-assessed and sequenced.</strong> Each robot checks its own sensor-stream freshness locally (lidar age, camera age) and folds the verdict as a beacon with a monotonic <code>seq</code>. The fold ignores stale or duplicate sequences, so redelivery and reordering of proposals by the network cannot corrupt anything.</li>
+  <li><strong>The health beacon is self-assessed and sequenced.</strong> Each robot checks its own sensor-stream freshness locally (pose, lidar and camera ages — the predecessor's per-stream timeouts) and folds the verdict as a beacon with a monotonic <code>seq</code>. The fold ignores stale or duplicate sequences, so redelivery and reordering of proposals by the network cannot corrupt anything.</li>
   <li><strong>Silence needs a second mechanism.</strong> A crashed robot never sends its own not-ok beacon. So any live robot may propose <code>suspect</code>, carrying the victim's last folded <code>seq</code>. The fold acts only if no newer beacon landed first. That one condition makes late beacons void stale suspicions, makes duplicates no-ops, and lets every robot propose concurrently without coordination. It is the same shape as the route scenario's lease timeout in Volume 1.</li>
   <li><strong>Gating is a fold rule, not a check at the sender.</strong> A <code>detection</code> is accepted only if its reporter is healthy <em>at that point in the log</em>. Every robot applies the rule to the same ordered stream, so every robot keeps the identical detection list. The predecessor needed a full voting round to make this call.</li>
 </ul>
@@ -277,7 +277,7 @@
 <h2 id="health">The health fold, live</h2>
 <div class="sand" id="sandbox">
   <h3>Health verdict playground</h3>
-  <div class="sub">This is the actual fold logic from <code>arena_fsm.py</code> in your browser. Propose beacons and suspicions for a 3-robot fleet and watch the log and the derived verdicts. Try suspecting robot 2 and then landing its late beacon first: the suspicion becomes a no-op, exactly the crash-versus-slow race the predecessor's TTLs approximated.</div>
+  <div class="sub">The fold's health, suspicion and claim rules from <code>arena_fsm.py</code>, mirrored in your browser. Propose beacons and suspicions for a 3-robot fleet and watch the log and the derived verdicts. Try suspecting robot 2 and then landing its late beacon first: the suspicion becomes a no-op, exactly the crash-versus-slow race the predecessor's TTLs approximated.</div>
   <div class="sandgrid">
     <div class="loglist" id="sblog" aria-live="polite"></div>
     <div>
@@ -318,7 +318,7 @@
 <div class="tablewrap"><table>
   <tr><th>Node</th><th>Where</th><th>Pub</th><th>Sub</th></tr>
   <tr><td><code>pioneer_explorer</code></td><td>Mac (Webots)</td><td><code>/robot_i/pose</code>, <code>/robot_i/telemetry</code></td><td><code>/robot_i/goto</code></td></tr>
-  <tr><td><code>arena_coordinator</code></td><td>container</td><td><code>/robot_i/vertex/tx</code>, <code>/robot_i/goto</code>, <code>/robot_i/mission_state</code></td><td><code>/robot_i/vertex/event</code>, <code>/robot_i/pose</code>, <code>/robot_i/telemetry</code>, <code>/robot_i/detection</code></td></tr>
+  <tr><td><code>arena_coordinator</code></td><td>container</td><td><code>/robot_i/vertex/tx</code>, <code>/robot_i/goto</code>, <code>/robot_i/mission_state</code></td><td><code>/robot_i/vertex/event</code>, <code>/robot_i/pose</code>, <code>/robot_i/telemetry</code>, <code>/robot_i/detection</code>, <code>/reset</code></td></tr>
   <tr><td><code>vertex_node</code></td><td>container</td><td><code>/robot_i/vertex/event</code></td><td><code>/robot_i/vertex/tx</code></td></tr>
 </table></div>
 <p>The <code>telemetry</code> topic carries per-stream sensor ages. The agent turns them into its health beacon, which is the live path from a dying camera to a fleet-wide, agreed, reversible verdict. Headless, <code>nodes/mock_pioneer.py</code> stands in for Webots with straight-line kinematics, a scripted sensor outage, and planted detections, so CI asserts the whole loop against real consensus with no simulator.</p>
@@ -343,7 +343,7 @@ docker compose run --rm --service-ports sim simarena
 <p>After a live run, prove the five robots shared one ordered stream:</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 python3 vertex_ros2/test/simulation/nodes/verify_consensus_logs.py \
-    vertex_ros2/test/simulation/logs <span class="s">'robot_*_arena.log'</span>
+    vertex_ros2/test/simulation_arena/logs <span class="s">'robot_*_arena.log'</span>
 </pre></div>
 
 <h2 id="tests">What the tests assert</h2>
