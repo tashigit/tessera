@@ -121,15 +121,15 @@ the bounded channel is FIFO, and `Event::transactions()` iterates by index.
 These can't be fully closed inside this repo; each is small (design §9).
 
 1. **`whitened_signature()` — resolved against v0.14.0.** An earlier
-   (pre-0.14.0) build segfaulted in `tv_event_get_whitened_signature`. In v0.14.0
-   the getter reads a fixed-length buffer via `as_ptr()`/`len()` — always non-null, so it
-   cannot null-deref. `VertexEvent.whitened_signature` is now **populated**
+   (pre-0.14.0) build segfaulted in `tv_event_get_whitened_signature`; v0.14.0
+   returns the fixed-length signature reliably for every event.
+   `VertexEvent.whitened_signature` is now **populated**
    (`vertex_core/src/convert.rs`); `single_node` asserts it is non-empty and
    `multi_node` diffs it byte-for-byte across peers (it is consensus-intrinsic).
 2. **`Transaction` Drop leaks** (§9.1) — we allocate immediately before
-   send, so we never drop an unsent buffer. Note: a `Drop` calling `tv_free` would
-   be **unsound** — `tv_transaction_allocate` returns an allocation while `tv_free` expects an
-   incompatible pointer type; the real fix needs a dedicated `tv_transaction_free` upstream.
+   send, so we never drop an unsent buffer. Note: a `Drop` calling `tv_free`
+   is not a safe fix — transaction buffers are not `tv_free`-compatible; the
+   real fix needs a dedicated `tv_transaction_free` upstream.
 3. **No `Engine::stop`** (§9.3) — teardown drops the `Context` on the engine thread
    after the recv loop exits; a `deactivate → activate` cycle re-creates the engine
    from scratch (verified by `lifecycle_behavior`). Because `recv_message` can't be

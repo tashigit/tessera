@@ -88,8 +88,8 @@ fn submitted_transactions_round_trip_in_order() {
     });
 
     // Calling Event::whitened_signature() against v0.14.0 does NOT
-    // segfault (the FFI getter reads a fixed-length buffer), and
-    // the value comes back populated.
+    // segfault (the pre-0.14.0 getter could), and the value comes back
+    // populated.
     assert!(
         whitened_len > 0,
         "expected a non-empty whitened_signature on at least one event"

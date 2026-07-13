@@ -73,10 +73,8 @@ impl EventRecord {
             created_at: nanos_to_time(event.created_at()),
             hash: *event.hash(),
             creator_pub_der: event.creator().to_der_vec().unwrap_or_default(),
-            // Re-enabled against tashi-vertex v0.14.0: the FFI getter
-            // `tv_event_get_whitened_signature` reads a fixed-length
-            // buffer via `as_ptr()`/
-            // `len()` — always non-null, fixed length, so it cannot segfault.
+            // Re-enabled against tashi-vertex v0.14.0: the getter now returns
+            // the fixed-length whitened signature reliably for every event.
             // The earlier null-deref was a pre-0.14.0 observation.
             whitened_signature: event.whitened_signature().to_vec(),
             transactions,
