@@ -1,4 +1,4 @@
-# Webots world — `routes_4bot.wbt` (quickstart)
+# Webots world: `routes_4bot.wbt` (quickstart)
 
 Iteration-1 simulation for the route-exploration test plan (see `../README.md`).
 Four bots, four routes (lanes), barriers you can raise/lower at runtime.
@@ -33,10 +33,10 @@ Click the 3D viewport (to give it keyboard focus), then:
 | `R` | **reset**: send all cars to staging, open all routes, restart the mission (fresh consensus epoch) |
 
 **Parallel exploration:** every bot claims a route over Vertex and consensus
-order assigns routes **exclusively** — no two bots ever share a route, and all
+order assigns routes **exclusively**: no two bots ever share a route, and all
 assigned bots drive at once (each prefers its own lane, so departures are
 straight out). A bot that hits a barrier reports **blocked**, returns to the
-start, and immediately claims another free route — nobody waits on anybody.
+start, and immediately claims another free route. Nobody waits on anybody.
 The first bot to reach the end fixes the **winner route**: everyone else
 abandons their exploration, traverses back, and takes the winner route to the
 end. If every route is blocked, bots periodically retry one so the fleet
@@ -85,7 +85,7 @@ remain as last-resort backstops.
 | `controllers/explorer_demo/` | iteration-1 standalone driver (drive + stop-at-barrier) |
 | `config/routes.yaml` | lane/waypoint/barrier geometry, shared with the ROS 2 nodes |
 
-## ROS 2 / Vertex integration (iteration 2) — native Webots + Docker ROS
+## ROS 2 / Vertex integration (iteration 2): native Webots + Docker ROS
 
 The consensus-coordinated exploration (`../README.md` §3) runs as a split:
 Webots stays **native on the Mac** (it has no arm64 Linux build, so this keeps
@@ -102,19 +102,19 @@ the GPU and avoids x86 emulation), and the ROS 2 / Vertex graph runs in the
   └───────────────────────────┘           └──────────────────────────────────┘
 ```
 
-### Architecture — where tessera / Vertex lives
+### Architecture: where tessera / Vertex lives
 
 The simulation folder is only Python glue (Webots controllers, the
-`mission_coordinator`, launch files) — **tessera enters as a compiled binary**,
+`mission_coordinator`, launch files). **Tessera enters as a compiled binary**,
 so nothing here textually shows the engine:
 
 1. `route_exploration.launch.py` starts `package="vertex_ros2",
-   executable="vertex_node"` — **one per bot, four instances**, each with its
+   executable="vertex_node"`, **one per bot, four instances**, each with its
    own keypair. `vertex_ros2` *is* tessera's ROS package (this repo),
    colcon-built inside the container.
 2. Crate chain inside each process:
    `vertex_node (vertex_ros2) → vertex_core → tashi-vertex-rs →
-   libtashi-vertex.so` — the last being the actual **Tashi Vertex consensus
+   libtashi-vertex.so`, the last being the actual **Tashi Vertex consensus
    engine** (hashgraph gossip-about-gossip + virtual voting).
 3. Each node binds a UDP socket (`vertex.bind_address`, 127.0.0.1:47611–47614
    from `fixtures/peers4.json`) and is peered with the other three
@@ -136,11 +136,11 @@ launch_test's byte-identical `/vertex/event` assertion.
 #    python Webots uses (launch Webots from a terminal so it's the same python3):
 python3 -m pip install --break-system-packages websocket-client
 
-# 1. container side — rosbridge + 4x vertex_node + 4x mission_coordinator
+# 1. container side: rosbridge + 4x vertex_node + 4x mission_coordinator
 #    (generates fixtures/peers4.json, colcon-builds vertex_ros2, then launches)
 docker compose run --rm --service-ports sim
 
-# 2. host side — open the ROS 2 world in native Webots and press Play
+# 2. host side: open the ROS 2 world in native Webots and press Play
 /Applications/Webots.app/Contents/MacOS/webots \
     vertex_ros2/test/simulation/worlds/routes_4bot_ros2.wbt
 ```
@@ -153,7 +153,7 @@ and the first arrival pulls everyone onto the winner route. Use keys `1`–`4`/`
 to set which single route is open. (Override the bridge URL with
 `WEBOTS_ROSBRIDGE_URL` if not on localhost.)
 
-### Per-node consensus logs — proof the bots are Vertex nodes
+### Per-node consensus logs: proof the bots are Vertex nodes
 
 Every `mission_coordinator` writes `simulation/logs/robot_<i>_consensus.log`
 (host-visible via the bind mount) recording, per node: every **consensus event
@@ -180,7 +180,7 @@ avoidance with zero extra messages).
 | `mission_coordinator` | container | `/robot_i/vertex/tx`, `/robot_i/drive`, `/robot_i/mission_state` | `/robot_i/vertex/event`, `/robot_i/pose`, `/robot_i/barrier` |
 | `vertex_node` | container | `/robot_i/vertex/event` | `/robot_i/vertex/tx` |
 
-### Automated test (headless, CI-ready) — no Webots
+### Automated test (headless, CI-ready, no Webots)
 
 `route_exploration.launch_test.py` asserts the scenario against **real 4-node
 Vertex consensus**, using a headless `mock_robot` in place of Webots (which has
@@ -192,26 +192,26 @@ docker compose run --rm sim simtest
 ```
 
 Asserts (application layer of `../README.md` §7):
-- **All reach the end** — every robot ends `arrived`, `phase == done`.
-- **Blocking discovered** — `R1` appears in every robot's `blocked` set.
-- **Route exclusivity** — no snapshot ever shows two bots assigned one route.
-- **Byte-identical consensus** — all 4 `/vertex/event` streams match exactly.
-- **Clean shutdown** — every process exits 0 / `-SIGINT` / `-SIGTERM`.
+- **All reach the end**: every robot ends `arrived`, `phase == done`.
+- **Blocking discovered**: `R1` appears in every robot's `blocked` set.
+- **Route exclusivity**: no snapshot ever shows two bots assigned one route.
+- **Byte-identical consensus**: all 4 `/vertex/event` streams match exactly.
+- **Clean shutdown**: every process exits 0 / `-SIGINT` / `-SIGTERM`.
 
 ### What's verified
 
-- ✅ **Consensus decision logic** — `nodes/mission_fsm.py`, 13 unit tests
-  (`python3 nodes/test_mission_fsm.py`): identical ordered log ⇒ identical
-  assignments/state on every robot.
-- ✅ **Automated integration** — `simtest` passes in the container: 4× real
+- **Consensus decision logic**: `nodes/mission_fsm.py`, 13 unit tests
+  (`python3 nodes/test_mission_fsm.py`). The same ordered log yields identical
+  assignments and state on every robot.
+- **Automated integration**: `simtest` passes in the container: 4× real
   `vertex_node` + coordinators + mock robots run the parallel rules to
   completion, then survive a SIGKILLed explorer (lease recovery, f=1) and a
   mid-mission deactivate/activate cycle (no `Inactive` leakage). The
   randomized mission soak is `simsoak` (see `../README.md` §8).
-- ✅ **Worlds + physics + devices** — both worlds load/run in Webots R2025a.
-- ✅ **Native follower + bridge client** — loads in Webots on the Mac
+- **Worlds + physics + devices**: both worlds load/run in Webots R2025a.
+- **Native follower + bridge client**: loads in Webots on the Mac
   (`websocket-client`), idles cleanly with no rosbridge, retries to connect.
-- ✅ **Live physical run** — the two-terminal run above, exercised headless via
+- **Live physical run**: the two-terminal run above, exercised headless via
   the autotest fixture in `route_supervisor.py`: launch Webots with
   `WEBOTS_AUTOTEST=turn3` (open R2, then flip to R1-only mid-mission) or
   `WEBOTS_AUTOTEST=open<k>` (exclusive-open route k). The supervisor logs

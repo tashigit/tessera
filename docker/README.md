@@ -9,7 +9,7 @@ distro the design acceptance criteria (§7) target.
 ROS 2 dropped macOS from its supported tiers; Jazzy targets Ubuntu 24.04. On an
 Apple Silicon (M-series) Mac the right move is a Linux container:
 
-- The `ros:jazzy-ros-base` image is **multi-arch** — on an M3 Docker pulls the
+- The `ros:jazzy-ros-base` image is **multi-arch**: on an M3 Docker pulls the
   `linux/arm64` variant and runs it **natively** (no x86 emulation, full speed).
 - `tashi-vertex-rs`'s CMake downloads the prebuilt `tashi-vertex-c` release and,
   on Linux/arm64, links **`libtashi-vertex-arm64.so`** (shipped since v0.14.0).
@@ -47,7 +47,7 @@ From the `tessera` repo root:
 ```console
 docker compose build            # build the env image once (slow: builds ros2-rust)
 
-docker compose run --rm core    # vertex_core cargo test only — fast smoke test
+docker compose run --rm core    # vertex_core cargo test only (fast smoke test)
 docker compose run --rm build   # colcon build the vertex_ros2 node
 docker compose run --rm test    # core + build + the 3-node launch_test (§7 ordering)
 docker compose run --rm -e SOAK_SECONDS=120 soak   # shortened soak
@@ -81,5 +81,5 @@ overlay**:
 - If a message package still lacks Rust bindings at `colcon build`, add its repo
   to `extra_interfaces.repos` so the generator runs over it.
 
-Run `docker compose run --rm core` first — it exercises the `tashi-vertex` CMake
+Run `docker compose run --rm core` first. It exercises the `tashi-vertex` CMake
 fetch and the Rust core without the ROS layer, isolating env problems quickly.
