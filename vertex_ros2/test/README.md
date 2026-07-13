@@ -2,7 +2,7 @@
 
 ROS-level acceptance tests (design §7). They launch real
 `vertex_node` processes and require **ROS 2 (Jazzy baseline)** + a colcon-built
-workspace — they do **not** run in a plain `cargo test` sandbox.
+workspace. They do **not** run in a plain `cargo test` sandbox.
 
 > The same consensus-ordering guarantee these tests assert at the ROS level is
 > also verified, with no ROS dependency, by `vertex_core/tests/multi_node.rs`

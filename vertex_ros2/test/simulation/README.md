@@ -1,4 +1,4 @@
-# Simulation Test Plan — `vertex_ros2` consensus-coordinated route exploration
+# Simulation Test Plan: `vertex_ros2` consensus-coordinated route exploration
 
 Status: **v0.3 (as built)**. The v0.1 plan described a sequential, round-based
 protocol; the implementation evolved to a **parallel** model (all bots move
@@ -7,8 +7,8 @@ describes what is actually built and verified. All five sub-scenarios
 (N1-N5, §4) are implemented, and the headless suite runs in CI.
 Scope: application-level acceptance of the `vertex_ros2` ↔ Vertex consensus
 stack, driven by a fleet of 4 simulated robots in a physics world.
-(A second simulation — five Pioneer 3-AT robots sweeping an outdoor arena
-with consensus-folded health verdicts — lives beside this directory; see
+(A second simulation, five Pioneer 3-AT robots sweeping an outdoor arena
+with consensus-folded health verdicts, lives beside this directory; see
 `../simulation_arena/README.md`.)
 
 Scenario under test: **Consensus-coordinated route exploration**. Four robots
@@ -34,10 +34,10 @@ physical.
 
 | Layer | What it proves | Where it's tested | Simulator |
 |---|---|---|---|
-| **L0 — engine** | 3 real engines reach identical total order over UDP | `vertex_core/tests/multi_node.rs` | none |
-| **L1 — ROS bridge** | `vertex_node` publishes events in Vertex order; byte-identical `/vertex/event` across peers; no publishes while `Inactive`; lifecycle cycles | `test/system_three_peers.launch_test.py` | headless `launch_test` |
-| **L2 — endurance** | no RSS growth under 10-min load | `test/soak.launch_test.py` | headless |
-| **L3 — application** | agreement on the ordered log yields exclusive route assignments, propagates the same outcomes, and converges every robot onto the same proven route, all driving **physical** motion | `route_exploration.launch_test.py` (headless) + the live Webots harness (this directory) | Webots for the live run; a mock replaces it headless |
+| **L0, engine** | 3 real engines reach identical total order over UDP | `vertex_core/tests/multi_node.rs` | none |
+| **L1, ROS bridge** | `vertex_node` publishes events in Vertex order; byte-identical `/vertex/event` across peers; no publishes while `Inactive`; lifecycle cycles | `test/system_three_peers.launch_test.py` | headless `launch_test` |
+| **L2, endurance** | no RSS growth under 10-min load | `test/soak.launch_test.py` | headless |
+| **L3, application** | agreement on the ordered log yields exclusive route assignments, propagates the same outcomes, and converges every robot onto the same proven route, all driving **physical** motion | `route_exploration.launch_test.py` (headless) + the live Webots harness (this directory) | Webots for the live run; a mock replaces it headless |
 
 L3 does not re-test consensus. Ordering, byte-identical streams, and
 no-publish-in-`Inactive` are proven at L0/L1 far more cheaply. L3 *reuses* the
@@ -69,7 +69,7 @@ without any simulator.
 
 ---
 
-## 2. Fleet size rationale — why 4 robots
+## 2. Fleet size rationale: why 4 robots
 
 Vertex is BFT with the standard `n ≥ 3f + 1` quorum:
 
@@ -87,7 +87,7 @@ the documented minimum.
 
 ---
 
-## 3. Scenario — parallel consensus-coordinated route exploration
+## 3. Scenario: parallel consensus-coordinated route exploration
 
 Four routes `R1..R4` (lanes) run west to east; a closed route's barrier sits
 at `x = 1.5`, deep in its corridor. All robots start staged on the west side,
@@ -105,7 +105,7 @@ Every bot claims a route over Vertex; consensus assigns routes exclusively and
 all assigned bots explore at once. Blocked bots report, return, and re-claim;
 the first arrival fixes the winner and everyone converges onto it.
 
-### 3.1 Protocol — a replicated state machine over the ordered log
+### 3.1 Protocol: a replicated state machine over the ordered log
 
 Every robot maintains identical state, computed purely from `/vertex/event` in
 consensus order (`nodes/mission_fsm.py`, no ROS/Webots dependencies, unit
@@ -332,7 +332,7 @@ The 4-peer mesh, remapping, lifecycle-via-`/vertex/transition`, and
 byte-identical event check are lifted directly from
 `system_three_peers.launch_test.py` (scaled 3 → 4).
 
-### 6.2 Barrier detection — by stall, not by range sensor
+### 6.2 Barrier detection by stall, not by range sensor
 
 A robot reports "blocked" when it **stops making forward progress** inside its
 lane, on its target row, while pushing east (it is pressing against a raised
@@ -429,7 +429,7 @@ no arm64 Linux build for the container).
 
 ---
 
-## 9. Traceability — mapping to acceptance criteria & tickets
+## 9. Traceability: mapping to acceptance criteria
 
 | This harness | Existing criterion (design §7) | Relationship |
 |---|---|---|

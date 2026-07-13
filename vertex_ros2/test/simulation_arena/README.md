@@ -1,4 +1,4 @@
-# Simulation 2 — consensus-coordinated arena exploration (`pioneer_arena`)
+# Simulation 2: consensus-coordinated arena exploration (`pioneer_arena`)
 
 Status: **v0.1 (as built)**. Second application-level simulation on the
 `vertex_ros2` ↔ Vertex stack, alongside the route exploration harness
@@ -35,7 +35,7 @@ What consensus owns:
    centre. A holder that stops making progress (obstacle cluster, pit)
    releases the sector with `abandon`; after `max_attempts` of its own
    failures it condemns the sector with `unreachable`. Only the holder can
-   report — a bot whose claim was released must re-claim first, so coverage
+   report. A bot whose claim was released must re-claim first, so coverage
    is never credited off a stale assignment.
 3. **Health.** Every bot folds a periodic `health` beacon into the log:
    monotonic `seq`, self-assessed `ok` from its local sensor-stream freshness
@@ -43,7 +43,7 @@ What consensus owns:
    telemetry timeouts). A not-ok beacon makes the bot fleet-wide unhealthy at
    that consensus point: its claim is released, new claims are refused, and
    its detections are rejected. A fresh ok beacon readmits it. No votes, no
-   tallies — every bot folds the same beacons in the same order, so the
+   tallies. Every bot folds the same beacons in the same order, so the
    verdicts agree everywhere by construction.
 4. **Silence lease.** A crashed bot never sends a not-ok beacon. Any live bot
    may propose `suspect` carrying the victim's last folded beacon `seq`; the
@@ -53,8 +53,8 @@ What consensus owns:
    timeout).
 5. **Detections.** A robot that sights something (a deer, a flagged rock)
    relays it as a `detection` record. The fold accepts it only if the
-   reporter is healthy at that point in the log — the predecessor's "reach
-   consensus on robot health before accepting detections", now a pure rule
+   reporter is healthy at that point in the log. This is the predecessor's
+   "reach consensus on robot health before accepting detections", now a pure rule
    applied identically on every bot.
 
 ### Transaction payloads
@@ -165,7 +165,7 @@ python3 -m pip install --break-system-packages websocket-client
 docker compose build
 ```
 
-**Terminal 1 — the consensus graph** (rosbridge + 5x `vertex_node` +
+**Terminal 1, the consensus graph** (rosbridge + 5x `vertex_node` +
 5x `arena_coordinator`; builds the workspace and generates
 `fixtures/peers5.json` on first run):
 
@@ -174,10 +174,10 @@ docker compose run --rm --service-ports sim simarena
 ```
 
 Wait for `Rosbridge WebSocket server started on port 9090` in the output.
-The coordinators immediately start beaconing `health ... ok: False` — that is
+The coordinators immediately start beaconing `health ... ok: False`. That is
 correct: no robots are connected yet, so no telemetry streams exist.
 
-**Terminal 2 — the world**, in native Webots (R2025a):
+**Terminal 2, the world**, in native Webots (R2025a):
 
 ```bash
 /Applications/Webots.app/Contents/MacOS/webots \
@@ -192,7 +192,7 @@ robots, trees, rocks, deer textures) from the Webots CDN and generates the
 ### 5.3 What you should see
 
 The 3D view shows only what a real deployment would show: robots driving.
-The shared state is observed the way an operator would observe it — from
+The shared state is observed the way an operator would observe it, from
 each node's stream and logs (deliberate: there are no in-world markers,
 because the world would not carry any).
 
@@ -206,7 +206,7 @@ because the world would not carry any).
 4. Terminal 1 shows the shared state evolving as transactions: `claim`,
    `explored`, and the occasional `abandon`/`unreachable`, identical on
    every node.
-5. The mission is done when every sector is explored or condemned — phase
+5. The mission is done when every sector is explored or condemned: phase
    `done` in `mission_state` and in every per-node log.
 
 Watch any robot's derived state live (third terminal):
@@ -220,7 +220,7 @@ docker exec -it $(docker ps -q -f name=tessera-sim-run | head -1) bash -lc \
 Try a live experiment: pause Webots mid-run (`Ctrl+0` or the pause button).
 Telemetry stops, every coordinator's next beacon reports `ok: False`, and the
 fleet marks all robots unhealthy and releases their claims. Resume, and the
-next beacons readmit everyone and the sweep continues — the MQTT
+next beacons readmit everyone and the sweep continues. That is the MQTT
 predecessor's whole voting protocol, visible as two lines of log.
 
 ### 5.4 Verifying a live run
@@ -247,7 +247,7 @@ holds port 9090 and its coordinators keep publishing into the next session).
 | Symptom | Resolution |
 |---|---|
 | Robots never move, coordinators stay `ok: False` | The controllers are not connected: check `websocket-client` is importable by the python3 on the PATH Webots was launched from, and that port 9090 is forwarded (`--service-ports`). |
-| A robot sits still for a long time | Usually recoverable: a wedged robot prints `wedged at (x, y) — backing off` and reverses free, and a stalled sector is `abandon`ed for someone else after `stall_sec`. A robot trapped in a pit (the horizontal lidar cannot see holes) logs `IMMOBILIZED` after `immobilized_sec` and stops claiming, so the rest of the fleet finishes without it. |
+| A robot sits still for a long time | Usually recoverable: a wedged robot prints `wedged at (x, y): backing off` and reverses free, and a stalled sector is `abandon`ed for someone else after `stall_sec`. A robot trapped in a pit (the horizontal lidar cannot see holes) logs `IMMOBILIZED` after `immobilized_sec` and stops claiming, so the rest of the fleet finishes without it. |
 | `Port 1234 is already in use` warning in Webots | Another Webots instance is open (e.g. the route world). Harmless: Webots falls back to the next port. |
 | Robots erratic, poses jumping | Two copies of this world are attached to the same rosbridge (e.g. a GUI run plus a forgotten headless run): both publish `/robot_i/pose`. Exactly one Webots world may be attached to the graph at a time. |
 | Long white/frozen window on first open | Asset download + pit-mesh generation on first load. Wait it out once. |
@@ -275,7 +275,7 @@ docs). Legend: **ported** = same observable behaviour on the new transport;
 | Frontier sharing (`coordination/frontiers`) | subsumed | the fixed sector grid replaces the frontier pipeline; the shared thing (who explores where) is the claim |
 | Path sharing (`coordination/paths`) | dropped | advisory data nobody agreed on; robots avoid each other physically (lidar), and sector exclusivity keeps them apart at the task level |
 | Occupancy-grid mapping / SLAM products | dropped | out of scope for a coordination-fabric harness (§7); local autonomy can be re-added without touching the protocol |
-| A* planning + Pure Pursuit following | subsumed | direct steering with lidar-reactive avoidance, wedge escape, and stall reporting — deterministic and assertable |
+| A* planning + Pure Pursuit following | subsumed | direct steering with lidar-reactive avoidance, wedge escape, and stall reporting, deterministic and assertable |
 | Camera image pipeline (`image_raw` into ROS) | dropped | the camera is enabled and its freshness feeds health; frames themselves had no cross-robot consumer in pioneer either |
 | Sensor/command bridging (`/tmp` file polling) | subsumed | rosbridge WebSocket + onboard GPS/IMU (the file bridge cannot cross the container boundary and was a latency tax) |
 | Operator monitoring (consensus_monitor, system_health) | subsumed | `mission_state` topic, per-node consensus logs, `verify_consensus_logs.py` |
@@ -287,7 +287,7 @@ docs). Legend: **ported** = same observable behaviour on the new transport;
 - **Pose is GPS ground truth**, as in the route scenario: the property under
   test is the coordination fabric, not SLAM. The occupancy-grid / frontier
   pipeline of the MQTT predecessor is deliberately replaced by the fixed
-  sector grid — it kept every robot's *local* autonomy but moved all *shared*
+  sector grid. The port kept every robot's *local* autonomy but moved all *shared*
   state into the fold, which is the porting pattern the tutorial teaches.
 - **Detections in the live world are not vision-based** (v0.1: the mock
   plants them; the camera is enabled and its freshness feeds the health
@@ -299,7 +299,7 @@ docs). Legend: **ported** = same observable behaviour on the new transport;
   the coordinator).
 - **Crash-the-robot fault injection** (SIGKILL, exercising `suspect` on real
   silence) is unit-tested in the fold and implemented in the coordinator, but
-  not yet a dedicated launch_test — the route scenario's N3 covers the
+  not yet a dedicated launch_test; the route scenario's N3 covers the
   engine-level property at n = 4.
 - **Pits can permanently trap a robot.** The arena's craters are invisible to
   a horizontal lidar, and a Pioneer that drives into a deep one cannot climb

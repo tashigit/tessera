@@ -211,7 +211,7 @@ def main():
             escapes += 1
             anchor_x, anchor_y, anchor_t = gx, gy, now
             print(f"[pioneer_explorer:{name}] wedged at "
-                  f"({gx:.1f}, {gy:.1f}) — backing off")
+                  f"({gx:.1f}, {gy:.1f}): backing off")
         if anchor_x is None:
             anchor_x, anchor_y, anchor_t = gx, gy, now
         if now < backoff_until:

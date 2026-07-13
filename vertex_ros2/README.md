@@ -2,7 +2,7 @@
 
 The ROS 2 node (`vertex_node`) for the Vertex consensus integration. It maps the
 tested [`vertex_core`](../vertex_core) controller onto the ROS-facing contract.
-Built by **colcon** (`ament_cargo`) inside a ROS 2 workspace — a bare `cargo build`
+Built by **colcon** (`ament_cargo`) inside a ROS 2 workspace; a bare `cargo build`
 outside colcon will not resolve `rclrs`/the generated message crates.
 
 ## ROS-facing contract (§3.3)
@@ -21,7 +21,7 @@ outside colcon will not resolve `rclrs`/the generated message crates.
 
 `rclrs` ships no `LifecycleNode`. **Re-checked 2026-06-09**
 against `ros2-rust/ros2_rust` `main` (post-v0.7.0): `rclrs/src` still has no
-`lifecycle`/`LifecycleNode` module — it provides nodes, services, parameters,
+`lifecycle`/`LifecycleNode` module. It provides nodes, services, parameters,
 timers, and (newly) actions, but no managed-node support. **Decision: keep the
 `/vertex/transition` service fallback** (§8.4 fallback #2); revisit when upstream
 lands lifecycle nodes.
@@ -36,7 +36,7 @@ exposes it through the `/vertex/transition` service (verbs `configure`/`activate
 > is intentional and documented; migrating to a native `LifecycleNode` later is a
 > change localized to this crate (the engine path is unaffected). When it lands
 > upstream, the migration is a dependency bump plus swapping the service handlers
-> for the native transition callbacks — the state machine is unchanged.
+> for the native transition callbacks; the state machine is unchanged.
 
 ## Build
 
