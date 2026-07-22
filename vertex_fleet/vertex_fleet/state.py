@@ -45,7 +45,11 @@ def decode(payload) -> dict | None:
     are not a valid record (foreign traffic on the same mesh is ignored)."""
     try:
         rec = json.loads(bytes(payload).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, TypeError, UnicodeDecodeError, RecursionError):
+        # A record is untrusted input off the mesh: malformed bytes, non-uint8
+        # values, invalid UTF-8, and deeply-nested JSON (which raises
+        # RecursionError, not ValueError) must all be dropped, never crash the
+        # fold. This is the trust boundary for /vertex/event payloads.
         return None
     return rec if isinstance(rec, dict) else None
 

@@ -320,7 +320,7 @@ launch_ros.actions.Node(
               + [("/vertex/lifecycle/state", f"/robot_{i}/vertex/lifecycle/state")],
     parameters=[{
         "vertex.bind_address": me["addr"],
-        "vertex.secret_key_base58": me["secret"],
+        "vertex.secret_key_path": key_path,  # a 0600 file holding me["secret"]
         "vertex.peers": peer_specs,          # the other 3
         "options.heartbeat_us": 50000,
     }],

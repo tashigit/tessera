@@ -51,6 +51,32 @@ fn to_u16(name: &str, v: i64) -> Result<u16, ParamError> {
     u16::try_from(v).map_err(|_| ParamError::Range(format!("`{name}` out of u16 range (got {v})")))
 }
 
+/// Reject a secret-key file that is readable or writable beyond its owner.
+///
+/// Mirrors the posture OpenSSH enforces on private keys: with any group/other
+/// permission bit set, refuse to load the key rather than trust a file another
+/// local user could read or replace. On non-Unix targets there is no portable
+/// mode to check, so this is a no-op.
+#[cfg(unix)]
+fn check_key_file_perms(path: &str) -> Result<(), ParamError> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(path)
+        .map_err(|e| ParamError::Io(format!("stat {path}: {e}")))?;
+    if meta.mode() & 0o077 != 0 {
+        return Err(ParamError::Io(format!(
+            "secret key file {path} is group/world-accessible (mode {:03o}); \
+             restrict it with `chmod 600 {path}`",
+            meta.mode() & 0o777
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn check_key_file_perms(_path: &str) -> Result<(), ParamError> {
+    Ok(())
+}
+
 /// Declare every parameter on `node` and build the resolved [`Config`].
 ///
 /// All `options.*` parameters default to the documented Vertex defaults
@@ -80,6 +106,7 @@ pub fn build_config(node: &Node) -> Result<Config, ParamError> {
     // Prefer the file path (recommended production form — keeps the key out of
     // the parameter store; design §5.1). Fall back to the inline base58 value.
     let key = if !secret_key_path.is_empty() {
+        check_key_file_perms(&secret_key_path)?;
         let contents = std::fs::read_to_string(&*secret_key_path)
             .map_err(|e| ParamError::Io(format!("reading {secret_key_path}: {e}")))?;
         Config::secret_from_base58(contents.trim())?

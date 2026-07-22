@@ -15,6 +15,7 @@
 import json
 import os
 import signal
+import tempfile
 import time
 import unittest
 
@@ -45,6 +46,14 @@ def generate_test_description():
         pytest.skip(f"{PEERS_PATH} missing — run test/gen_test_keys.sh first.")
     with open(PEERS_PATH) as f:
         me = json.load(f)[0]
+    keydir = tempfile.mkdtemp(prefix="vertex_soak_keys_")
+    # vertex.secret_key_path over vertex.secret_key_base58: the base58 form is a
+    # normal ROS 2 parameter, so once declared the private key is readable by any
+    # DDS participant via `ros2 param get`/`ros2 param dump`.
+    key_path = os.path.join(keydir, "soak.key")
+    fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(me["secret"])
     node = launch_ros.actions.Node(
         package="vertex_ros2",
         executable="vertex_node",
@@ -52,7 +61,7 @@ def generate_test_description():
         parameters=[
             {
                 "vertex.bind_address": me["addr"],
-                "vertex.secret_key_base58": me["secret"],
+                "vertex.secret_key_path": key_path,
                 # vertex.peers omitted: launch_ros can't type an empty-list param
                 # (it becomes an empty tuple). The node defaults it to an empty
                 # array, which is exactly the solo session we want here.
