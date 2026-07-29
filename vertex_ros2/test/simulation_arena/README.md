@@ -223,7 +223,35 @@ fleet marks all robots unhealthy and releases their claims. Resume, and the
 next beacons readmit everyone and the sweep continues. That is the MQTT
 predecessor's whole voting protocol, visible as two lines of log.
 
-### 5.4 Verifying a live run
+### 5.4 Live map viewer (optional)
+
+`viewer/arena_viewer.html` is a self-contained page (no build step, no
+external dependency) that connects to the same rosbridge WebSocket the
+Mac-side Webots follower already uses. It decodes the real `/vertex/event`
+stream client-side, folding `claim`/`explored`/`unreachable`/`health`/
+`suspect`/`detection` records the same way `arena_fsm.ArenaState` does, just
+in JS, and renders the sector grid plus live robot positions from that fold
+and from `/pose`/`mission_state`. This does not add markers to the Webots
+world; §5.3's point about observing shared state the way an operator would,
+from streams, still stands. It's an external view built from the same public
+topics a real fleet dashboard would use, not something painted into the
+simulated world itself.
+
+```bash
+open vertex_ros2/test/simulation_arena/viewer/arena_viewer.html
+```
+
+Set the grid fields to match whichever run you have live (defaults match the
+§5.2 live launch: 5×4 grid, origin (-20,-15), cell 8×7.5, 5 bots; the
+headless §5.1 test uses a 4×2 grid, cell 10×7.5, same origin), then Connect.
+It taps `/robot_0/vertex/event` only, every peer's stream is byte-identical
+(verified by this project's own test suite), plus every robot's `/pose` and
+`/mission_state`. Sectors are colored by state (unclaimed, claimed in
+progress, explored and shaded by which robot finished it, unreachable), and
+the feed panel shows every decoded record live, including which side of a
+claim collision each robot landed on.
+
+### 5.5 Verifying a live run
 
 Each coordinator writes `logs/robot_<i>_arena.log` (host-visible via the bind
 mount): every consensus event delivered (with its hash), the folded state,
@@ -237,7 +265,7 @@ python3 ../simulation/nodes/verify_consensus_logs.py logs 'robot_*_arena.log'
 
 (Delete `logs/*.log` before a fresh run: the files append across runs.)
 
-### 5.5 Stopping and troubleshooting
+### 5.6 Stopping and troubleshooting
 
 Stop Webots first, then Ctrl+C in terminal 1. If `docker compose run` is
 interrupted abnormally, the container can survive its CLI: check
