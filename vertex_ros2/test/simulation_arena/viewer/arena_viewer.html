@@ -35,7 +35,25 @@
   #status.connecting   { background: #3a3314; color: #e5c04d; }
   #status.connected    { background: #123a20; color: var(--ok); }
 
-  main { display: flex; height: calc(100vh - 46px); }
+  main { display: flex; height: calc(100vh - 46px - 230px); }
+
+  #consensus {
+    height: 230px; flex-shrink: 0; border-top: 1px solid var(--border);
+    background: var(--panel); display: flex; flex-direction: column;
+  }
+  #consensusHead { padding: 6px 10px 0; color: var(--dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  #consensusSub { padding: 0 10px 6px; color: var(--dim); font-size: 11px; }
+  #consensusBody { flex: 1; display: flex; gap: 24px; overflow: auto; padding: 0 10px 10px; }
+  .matrixWrap { flex-shrink: 0; }
+  .matrixTitle { color: var(--dim); font-size: 11px; margin-bottom: 4px; }
+  .matrixTable { border-collapse: collapse; font: 11px ui-monospace, monospace; }
+  .matrixTable th, .matrixTable td {
+    padding: 3px 8px; border: 1px solid var(--border); text-align: center; white-space: nowrap;
+  }
+  .matrixTable th { color: var(--dim); font-weight: 600; }
+  .matrixTable td.rowHead, .matrixTable th.rowHead { text-align: left; color: var(--dim); }
+  .matrixTable td.disagree { box-shadow: inset 0 0 0 2px var(--bad); }
   #mapWrap { flex: 1; position: relative; min-width: 0; }
   canvas { display: block; background: #0c0f16; }
   #legend {
@@ -113,6 +131,27 @@
     <div id="feed"></div>
   </div>
 </main>
+
+<section id="consensus">
+  <div id="consensusHead">Shared consensus state — each bot's own view</div>
+  <div id="consensusSub">Columns are what each bot's own <code>mission_state</code> currently reports, not a single shared blob — a highlighted cell means two bots currently disagree, which consensus should never let happen for more than a beat.</div>
+  <div id="consensusBody">
+    <div class="matrixWrap">
+      <div class="matrixTitle">Sector ownership (claimed by / explored by / unreachable)</div>
+      <table class="matrixTable" id="sectorMatrix">
+        <thead><tr id="sectorMatrixHead"></tr></thead>
+        <tbody id="sectorMatrixBody"></tbody>
+      </table>
+    </div>
+    <div class="matrixWrap">
+      <div class="matrixTitle">Peer health (row = subject, column = observer)</div>
+      <table class="matrixTable" id="healthMatrix">
+        <thead><tr id="healthMatrixHead"></tr></thead>
+        <tbody id="healthMatrixBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
 
 <script>
 "use strict";
@@ -504,6 +543,101 @@ function renderBotCards() {
 }
 setInterval(renderBotCards, 300);
 
+// ---- consensus state matrices: what each bot's own mission_state currently
+// says about sector ownership and peer health, side by side. Every peer folds
+// the same ordered /vertex/event stream, so these columns should always
+// agree once each bot has published at least once after an event lands —
+// a lingering mismatch is a real divergence, not just staleness, and is
+// flagged with the `disagree` outline rather than silently averaged away. ----
+function renderConsensusMatrix() {
+  const sHead = document.getElementById("sectorMatrixHead");
+  sHead.innerHTML = "";
+  const sectorHeadCell = document.createElement("th");
+  sectorHeadCell.className = "rowHead"; sectorHeadCell.textContent = "Sector";
+  sHead.appendChild(sectorHeadCell);
+  for (let i = 0; i < CONFIG.numBots; i++) {
+    const th = document.createElement("th");
+    th.textContent = "Bot " + i; th.style.color = botColor(i);
+    sHead.appendChild(th);
+  }
+
+  const sBody = document.getElementById("sectorMatrixBody");
+  sBody.innerHTML = "";
+  for (const sid of grid.ids) {
+    const tr = document.createElement("tr");
+    const rowHead = document.createElement("td");
+    rowHead.className = "rowHead"; rowHead.textContent = sid;
+    tr.appendChild(rowHead);
+
+    const seen = [];
+    for (let i = 0; i < CONFIG.numBots; i++) {
+      const m = botMission[i];
+      const td = document.createElement("td");
+      let text = "-", color = "var(--dim)";
+      if (m) {
+        if ((m.explored || []).includes(sid)) {
+          const by = fold.exploredBy[sid];
+          text = by != null ? "explored·B" + by : "explored";
+          color = by != null ? botColor(by) : "#4a6a55";
+        } else if ((m.unreachable || []).includes(sid)) {
+          text = "unreachable"; color = "#e5484d";
+        } else if (m.claimed && sid in m.claimed) {
+          const holder = m.claimed[sid];
+          text = "claimed·B" + holder; color = botColor(holder);
+        }
+        seen.push(text);
+      }
+      td.textContent = text; td.style.color = color;
+      tr.appendChild(td);
+    }
+    if (new Set(seen).size > 1) {
+      for (let i = 1; i < tr.children.length; i++) tr.children[i].classList.add("disagree");
+    }
+    sBody.appendChild(tr);
+  }
+
+  const hHead = document.getElementById("healthMatrixHead");
+  hHead.innerHTML = "";
+  const healthHeadCell = document.createElement("th");
+  healthHeadCell.className = "rowHead"; healthHeadCell.textContent = "subject \\ observer";
+  hHead.appendChild(healthHeadCell);
+  for (let i = 0; i < CONFIG.numBots; i++) {
+    const th = document.createElement("th");
+    th.textContent = "B" + i; th.style.color = botColor(i);
+    hHead.appendChild(th);
+  }
+
+  const hBody = document.getElementById("healthMatrixBody");
+  hBody.innerHTML = "";
+  for (let subject = 0; subject < CONFIG.numBots; subject++) {
+    const tr = document.createElement("tr");
+    const rowHead = document.createElement("td");
+    rowHead.className = "rowHead"; rowHead.textContent = "Bot " + subject;
+    rowHead.style.color = botColor(subject);
+    tr.appendChild(rowHead);
+
+    const seen = [];
+    for (let observer = 0; observer < CONFIG.numBots; observer++) {
+      const m = botMission[observer];
+      const td = document.createElement("td");
+      if (m) {
+        const unhealthy = (m.unhealthy || []).includes(subject);
+        td.textContent = unhealthy ? "NOT OK" : "OK";
+        td.style.color = unhealthy ? "#e5484d" : "#35c463";
+        seen.push(unhealthy);
+      } else {
+        td.textContent = "-"; td.style.color = "var(--dim)";
+      }
+      tr.appendChild(td);
+    }
+    if (new Set(seen).size > 1) {
+      for (let i = 1; i < tr.children.length; i++) tr.children[i].classList.add("disagree");
+    }
+    hBody.appendChild(tr);
+  }
+}
+setInterval(renderConsensusMatrix, 300);
+
 // ---- status pill ----
 function setStatus(s) {
   const el = document.getElementById("status");
@@ -565,6 +699,7 @@ document.getElementById("connectBtn").addEventListener("click", () => {
 resizeCanvas();
 requestAnimationFrame(render);
 renderBotCards();
+renderConsensusMatrix();
 </script>
 </body>
 </html>
