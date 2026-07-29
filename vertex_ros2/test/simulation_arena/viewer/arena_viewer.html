@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Arena Exploration — Live Viewer</title>
+<style>
+  :root {
+    --bg: #10141c; --panel: #171c26; --border: #2a3242; --text: #d8dee9;
+    --dim: #7b8496; --accent: #4fc3f7; --ok: #35c463; --bad: #e5484d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.4 -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0 12px 0 0; font-weight: 600; }
+  header label { color: var(--dim); font-size: 12px; }
+  header input {
+    background: #0b0e14; border: 1px solid var(--border); color: var(--text);
+    border-radius: 4px; padding: 3px 6px; font: 12px monospace; width: 62px;
+  }
+  header input#url { width: 220px; }
+  header button {
+    background: var(--accent); color: #05202b; border: none; border-radius: 4px;
+    padding: 5px 12px; font-weight: 600; cursor: pointer;
+  }
+  header button:hover { filter: brightness(1.1); }
+  #status { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  #status.disconnected { background: #3a1418; color: var(--bad); }
+  #status.connecting   { background: #3a3314; color: #e5c04d; }
+  #status.connected    { background: #123a20; color: var(--ok); }
+
+  main { display: flex; height: calc(100vh - 46px); }
+  #mapWrap { flex: 1; position: relative; min-width: 0; }
+  canvas { display: block; background: #0c0f16; }
+  #legend {
+    position: absolute; top: 10px; left: 10px; background: rgba(10,13,20,0.85);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+    font-size: 11px; color: var(--dim); line-height: 1.7;
+  }
+  #legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+    margin-right: 6px; vertical-align: middle; }
+
+  #sidebar {
+    width: 320px; flex-shrink: 0; border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; background: var(--panel);
+  }
+  #bots { padding: 10px; display: grid; gap: 6px; border-bottom: 1px solid var(--border); }
+  .botcard {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    border-radius: 6px; border: 1px solid var(--border); background: #0f1420;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .botcard .id {
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 11px; color: #05202b;
+  }
+  .botcard .info { flex: 1; min-width: 0; }
+  .botcard .role { font-weight: 600; }
+  .botcard .sub { color: var(--dim); font-size: 11px; }
+  .botcard .health { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  #feedHead {
+    padding: 8px 10px 4px; color: var(--dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  #feed { flex: 1; overflow-y: auto; padding: 0 10px 10px; font: 11.5px/1.5 ui-monospace, monospace; }
+  .ev { padding: 3px 6px; border-radius: 4px; margin-bottom: 2px; }
+  .ev .t { color: var(--dim); margin-right: 6px; }
+  .ev.claim   { background: #10202c; }
+  .ev.explored{ background: #10241a; }
+  .ev.abandon { background: #2c2410; }
+  .ev.unreachable, .ev.suspect { background: #2c1414; }
+  .ev.health  { color: var(--dim); }
+  .ev.detection{ background: #2c2810; }
+  .ev.reset   { background: #24102c; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Arena Exploration — Live Viewer</h1>
+  <label>rosbridge <input id="url" value="ws://localhost:9090"></label>
+  <label>bots <input id="numBots" value="5"></label>
+  <label>grid <input id="gridNx" value="5">×<input id="gridNy" value="4"></label>
+  <label>origin <input id="gridMinX" value="-20">,<input id="gridMinY" value="-15"></label>
+  <label>cell <input id="cellW" value="8">×<input id="cellH" value="7.5"></label>
+  <button id="connectBtn">Connect</button>
+  <span id="status" class="disconnected">disconnected</span>
+</header>
+
+<main>
+  <div id="mapWrap">
+    <canvas id="map"></canvas>
+    <div id="legend">
+      <div><span class="sw" style="background:#f4f4f4;border:1px solid #ccc"></span>unclaimed</div>
+      <div><span class="sw" style="background:#4fc3f733;border:1px dashed #4fc3f7"></span>claimed (in progress)</div>
+      <div><span class="sw" style="background:#4fc3f7"></span>explored (fill = bot color)</div>
+      <div><span class="sw" style="background:#3a0a0a;border:1px solid #7a1414"></span>unreachable / blocked</div>
+      <div style="margin-top:4px">ring: <span style="color:#35c463">green</span> healthy ·
+        <span style="color:#e5484d">red</span> unhealthy</div>
+    </div>
+  </div>
+  <div id="sidebar">
+    <div id="bots"></div>
+    <div id="feedHead">Consensus feed (/vertex/event, decoded live)</div>
+    <div id="feed"></div>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+// ---- config (defaults match arena_exploration.launch.py's live-launch grid) ----
+const CONFIG = {
+  numBots: 5, gridNx: 5, gridNy: 4, gridMinX: -20, gridMinY: -15, cellW: 8, cellH: 7.5,
+};
+
+const BOT_COLORS = ["#e6194b","#3cb44b","#4363d8","#f58231","#911eb4","#42d4f4","#bfef45","#f032e6"];
+const botColor = (b) => BOT_COLORS[((b % BOT_COLORS.length) + BOT_COLORS.length) % BOT_COLORS.length];
+function hexAlpha(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ---- grid geometry (mirrors arena_fsm.make_grid: row-major from SW corner) ----
+function makeGrid(nx, ny, minX, minY, cellW, cellH) {
+  const ids = [], centers = {};
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const sid = "S" + String(iy * nx + ix).padStart(2, "0");
+      ids.push(sid);
+      centers[sid] = [minX + (ix + 0.5) * cellW, minY + (iy + 0.5) * cellH];
+    }
+  }
+  return { ids, centers };
+}
+let grid = makeGrid(CONFIG.gridNx, CONFIG.gridNy, CONFIG.gridMinX, CONFIG.gridMinY, CONFIG.cellW, CONFIG.cellH);
+
+// ---- deterministic fold, mirrors vertex_fleet.ReplicatedState + arena_fsm.ArenaState ----
+// (plus exploredBy, which Python's fold discards but the raw "explored" record
+// already carries — the whole point of decoding the real consensus stream
+// client-side instead of relying on a derived-state topic).
+class ArenaFold {
+  constructor(sectorIds) { this.sectorIds = sectorIds; this.epoch = 0; this.wipe(); }
+  wipe() {
+    this.claimed = {};            // sector -> bot
+    this.explored = new Set();
+    this.exploredBy = {};         // sector -> bot
+    this.unreachable = new Set();
+    this.unhealthy = new Set();
+    this.healthSeq = {};          // bot -> seq
+    this.detections = [];
+    this.phase = "exploring";
+  }
+  applyRaw(rec) {
+    if (!rec || !rec.op) return null;
+    if (rec.op === "reset") {
+      const e = rec.epoch || 0;
+      if (typeof e === "number" && e > this.epoch) { this.wipe(); this.epoch = e; }
+      return { accepted: true };
+    }
+    if ((rec.epoch || 0) !== this.epoch) return { accepted: false, reason: "stale epoch" };
+    return this.applyRecord(rec);
+  }
+  applyRecord(rec) {
+    const { op, bot, sector } = rec;
+    let accepted = false;
+    switch (op) {
+      case "claim": {
+        accepted = this.phase === "exploring" && bot != null && !this.unhealthy.has(bot)
+          && this.sectorIds.includes(sector) && !this.explored.has(sector)
+          && !this.unreachable.has(sector) && !(sector in this.claimed)
+          && !Object.values(this.claimed).includes(bot);
+        if (accepted) this.claimed[sector] = bot;
+        break;
+      }
+      case "explored":
+        accepted = this.claimed[sector] === bot;
+        if (accepted) { this.explored.add(sector); this.exploredBy[sector] = bot; delete this.claimed[sector]; }
+        break;
+      case "abandon":
+        accepted = this.claimed[sector] === bot;
+        if (accepted) delete this.claimed[sector];
+        break;
+      case "unreachable":
+        accepted = this.claimed[sector] === bot;
+        if (accepted) { this.unreachable.add(sector); delete this.claimed[sector]; }
+        break;
+      case "health": {
+        const seq = rec.seq;
+        if (bot == null || typeof seq !== "number") break;
+        accepted = seq > (this.healthSeq[bot] ?? -1);
+        if (accepted) {
+          this.healthSeq[bot] = seq;
+          if (rec.ok) this.unhealthy.delete(bot); else this._markUnhealthy(bot);
+        }
+        break;
+      }
+      case "suspect": {
+        const victim = rec.victim, seen = rec.seen_seq;
+        if (victim == null) break;
+        accepted = (this.healthSeq[victim] ?? -1) === seen;
+        if (accepted) this._markUnhealthy(victim);
+        break;
+      }
+      case "detection": {
+        const seq = rec.seq;
+        if (bot == null || this.unhealthy.has(bot)) break;
+        accepted = !this.detections.some((d) => d.bot === bot && d.seq === seq);
+        if (accepted) this.detections.push({ bot, seq, label: rec.label, x: rec.x, y: rec.y });
+        break;
+      }
+      default: return { accepted: false, reason: "unknown op" };
+    }
+    this._recomputePhase();
+    return { accepted };
+  }
+  _markUnhealthy(bot) {
+    this.unhealthy.add(bot);
+    for (const s of Object.keys(this.claimed)) if (this.claimed[s] === bot) delete this.claimed[s];
+  }
+  _recomputePhase() {
+    const remaining = this.sectorIds.filter((s) => !this.explored.has(s) && !this.unreachable.has(s));
+    this.phase = remaining.length === 0 ? "done" : "exploring";
+  }
+}
+let fold = new ArenaFold(grid.ids);
+
+// ---- transient highlights for events that don't leave persistent sector state ----
+const sectorFlash = {};   // sector -> {color, until}
+function flashSector(sector, color, ms = 1400) {
+  if (!sector) return;
+  sectorFlash[sector] = { color, until: performance.now() + ms };
+}
+function nearestSector(x, y) {
+  if (typeof x !== "number" || typeof y !== "number") return null;
+  let best = null, bestD = Infinity;
+  for (const sid of grid.ids) {
+    const [cx, cy] = grid.centers[sid];
+    const d = (x - cx) ** 2 + (y - cy) ** 2;
+    if (d < bestD) { bestD = d; best = sid; }
+  }
+  return best;
+}
+
+// ---- live per-bot data (not part of consensus: pose is local, mission_state
+// carries local-only signals like `immobilized` that never become a tx) ----
+const botPose = {};          // bot -> {x, y}
+const botMission = {};       // bot -> last mission_state payload
+
+// ---- minimal rosbridge client (hand-rolled: subscribe/publish JSON-over-WS,
+// see the rosbridge_suite protocol) — no external JS dependency ----
+class RosBridge {
+  constructor() { this.ws = null; this.subs = new Map(); this.reconnectTimer = null; this.wantConnected = false; }
+  connect(url) {
+    this.wantConnected = true;
+    clearTimeout(this.reconnectTimer);
+    setStatus("connecting");
+    this.ws = new WebSocket(url);
+    this.ws.onopen = () => {
+      setStatus("connected");
+      for (const [topic, { type }] of this.subs) this._sendSubscribe(topic, type);
+    };
+    this.ws.onmessage = (evt) => {
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch { return; }
+      if (msg.op === "publish") {
+        const sub = this.subs.get(msg.topic);
+        if (sub) sub.cb(msg.msg);
+      }
+    };
+    this.ws.onclose = () => {
+      setStatus("disconnected");
+      if (this.wantConnected) this.reconnectTimer = setTimeout(() => this.connect(url), 2000);
+    };
+    this.ws.onerror = () => { try { this.ws.close(); } catch {} };
+  }
+  disconnect() {
+    this.wantConnected = false;
+    clearTimeout(this.reconnectTimer);
+    if (this.ws) { this.ws.onclose = null; this.ws.close(); }
+    setStatus("disconnected");
+  }
+  subscribe(topic, type, cb) {
+    this.subs.set(topic, { type, cb });
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this._sendSubscribe(topic, type);
+  }
+  _sendSubscribe(topic, type) { this.ws.send(JSON.stringify({ op: "subscribe", topic, type })); }
+}
+const bridge = new RosBridge();
+
+function decodePayload(payloadB64) {
+  // rosbridge_server encodes ROS `uint8[]` fields (VertexTransaction.payload
+  // here) as base64 strings, not JSON integer arrays — verified against a
+  // live rosbridge instance, not assumed; get this wrong and every record
+  // silently fails to decode and nothing renders.
+  try {
+    const bin = atob(payloadB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const rec = JSON.parse(text);
+    return rec && typeof rec === "object" && !Array.isArray(rec) ? rec : null;
+  } catch { return null; }
+}
+
+// ---- event feed ----
+const feedEl = document.getElementById("feed");
+const MAX_FEED = 300;
+function describeEvent(rec, result) {
+  const tag = (r) => (result && result.accepted === false ? " ✗ rejected" : r);
+  switch (rec.op) {
+    case "claim": return tag(`bot ${rec.bot} claims ${rec.sector}` + (result.accepted ? " ✓ won" : " — lost race"));
+    case "explored": return tag(`bot ${rec.bot} finished ${rec.sector}`);
+    case "abandon": return tag(`bot ${rec.bot} abandoned ${rec.sector}`);
+    case "unreachable": return tag(`bot ${rec.bot} condemned ${rec.sector} (unreachable)`);
+    case "health": return `bot ${rec.bot} beacon #${rec.seq}: ${rec.ok ? "OK" : "NOT OK"}`;
+    case "suspect": return tag(`bot ${rec.bot} suspects bot ${rec.victim} (silence lease)`);
+    case "detection": return tag(`bot ${rec.bot} reports "${rec.label}"`);
+    case "reset": return `— mission reset → epoch ${rec.epoch} —`;
+    default: return `unknown op: ${JSON.stringify(rec)}`;
+  }
+}
+function pushFeed(rec, result) {
+  // rec's fields (label, sector, ...) arrive over the network from other
+  // peers' transactions — never interpolate them into innerHTML. Build the
+  // row from text nodes instead, so nothing here is ever parsed as markup.
+  const div = document.createElement("div");
+  div.className = "ev " + (rec.op || "");
+  const tSpan = document.createElement("span");
+  tSpan.className = "t";
+  tSpan.textContent = new Date().toLocaleTimeString();
+  div.appendChild(tSpan);
+  div.appendChild(document.createTextNode(describeEvent(rec, result)));
+  feedEl.appendChild(div);
+  while (feedEl.children.length > MAX_FEED) feedEl.removeChild(feedEl.firstChild);
+  feedEl.scrollTop = feedEl.scrollHeight;
+}
+
+// ---- canvas rendering ----
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+function resizeCanvas() {
+  const wrap = document.getElementById("mapWrap");
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+
+function transform() {
+  const minX = CONFIG.gridMinX, maxX = CONFIG.gridMinX + CONFIG.gridNx * CONFIG.cellW;
+  const minY = CONFIG.gridMinY, maxY = CONFIG.gridMinY + CONFIG.gridNy * CONFIG.cellH;
+  const margin = 36;
+  const scale = Math.min(
+    (canvas.width - margin * 2) / (maxX - minX),
+    (canvas.height - margin * 2) / (maxY - minY)
+  );
+  return {
+    scale,
+    toScreen(x, y) {
+      return [margin + (x - minX) * scale, canvas.height - margin - (y - minY) * scale];
+    },
+  };
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const tr = transform();
+  const now = performance.now();
+
+  for (const sid of grid.ids) {
+    const [cx, cy] = grid.centers[sid];
+    const [sx, sy] = tr.toScreen(cx, cy);
+    const w = tr.scale * CONFIG.cellW, h = tr.scale * CONFIG.cellH;
+    const x0 = sx - w / 2, y0 = sy - h / 2;
+
+    let fill = "#f4f4f4", stroke = "#333", dashed = false, label = "";
+    if (fold.unreachable.has(sid)) {
+      fill = "#3a0a0a"; stroke = "#7a1414";
+    } else if (fold.explored.has(sid)) {
+      const bot = fold.exploredBy[sid];
+      fill = hexAlpha(botColor(bot), 0.85); stroke = botColor(bot); label = "B" + bot;
+    } else if (sid in fold.claimed) {
+      const bot = fold.claimed[sid];
+      fill = hexAlpha(botColor(bot), 0.28); stroke = botColor(bot); dashed = true; label = "B" + bot + "…";
+    }
+    const flash = sectorFlash[sid];
+    if (flash) {
+      if (flash.until > now) {
+        const k = (flash.until - now) / 1400;
+        fill = hexAlpha(flash.color, 0.15 + 0.45 * k);
+        stroke = flash.color;
+      } else delete sectorFlash[sid];
+    }
+
+    ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = 2;
+    ctx.setLineDash(dashed ? [5, 4] : []);
+    ctx.fillRect(x0, y0, w, h); ctx.strokeRect(x0, y0, w, h);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "#9099ab"; ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "left";
+    ctx.fillText(sid, x0 + 4, y0 + 12);
+    if (label) {
+      ctx.fillStyle = "#111"; ctx.font = "bold 12px ui-monospace, monospace"; ctx.textAlign = "center";
+      ctx.fillText(label, sx, sy + 4);
+    }
+  }
+
+  for (let i = 0; i < CONFIG.numBots; i++) {
+    const p = botPose[i];
+    if (!p) continue;
+    const [sx, sy] = tr.toScreen(p.x, p.y);
+    ctx.beginPath(); ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+    ctx.fillStyle = botColor(i); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = fold.unhealthy.has(i) ? "#e5484d" : "#35c463"; ctx.stroke();
+    ctx.fillStyle = "#0b0e14"; ctx.font = "bold 11px ui-monospace, monospace"; ctx.textAlign = "center";
+    ctx.fillText(String(i), sx, sy + 4);
+  }
+
+  requestAnimationFrame(render);
+}
+
+// ---- sidebar bot cards ----
+function renderBotCards() {
+  // m.role/m.target/m.phase arrive over the network on /robot_i/mission_state
+  // (an unauthenticated ROS topic anyone on the graph could publish to) —
+  // same rule as pushFeed: text nodes only, never innerHTML with these values.
+  const el = document.getElementById("bots");
+  el.innerHTML = "";
+  for (let i = 0; i < CONFIG.numBots; i++) {
+    const m = botMission[i] || {};
+    const healthy = !fold.unhealthy.has(i);
+
+    const card = document.createElement("div");
+    card.className = "botcard";
+
+    const idDiv = document.createElement("div");
+    idDiv.className = "id";
+    idDiv.style.background = botColor(i);
+    idDiv.textContent = String(i);
+
+    const healthDiv = document.createElement("div");
+    healthDiv.className = "health";
+    healthDiv.style.background = healthy ? "#35c463" : "#e5484d";
+
+    const info = document.createElement("div");
+    info.className = "info";
+    const roleDiv = document.createElement("div");
+    roleDiv.className = "role";
+    roleDiv.textContent = (m.role || "?") + (m.target ? " → " + m.target : "");
+    const subDiv = document.createElement("div");
+    subDiv.className = "sub";
+    subDiv.textContent = (m.phase || "") + (m.immobilized ? " · immobilized" : "");
+    info.appendChild(roleDiv);
+    info.appendChild(subDiv);
+
+    card.appendChild(idDiv);
+    card.appendChild(healthDiv);
+    card.appendChild(info);
+    el.appendChild(card);
+  }
+}
+setInterval(renderBotCards, 300);
+
+// ---- status pill ----
+function setStatus(s) {
+  const el = document.getElementById("status");
+  el.className = s;
+  el.textContent = s;
+}
+
+// ---- wire up subscriptions once connected ----
+function subscribeAll() {
+  // The consensus-of-record stream: all peers deliver byte-identical
+  // /vertex/event streams (verified by this project's own test suite), so
+  // tapping robot 0's is sufficient to see the whole fleet's agreed state.
+  bridge.subscribe("/robot_0/vertex/event", "vertex_ros2_msgs/msg/VertexEvent", (msg) => {
+    for (const txn of msg.transactions || []) {
+      const rec = decodePayload(txn.payload);
+      if (!rec) continue;
+      const result = fold.applyRaw(rec);
+      pushFeed(rec, result || { accepted: false, reason: "epoch/parse" });
+      if (rec.op === "abandon") flashSector(rec.sector, "#f5a623");
+      if (rec.op === "detection") {
+        const sid = nearestSector(rec.x, rec.y);
+        flashSector(sid, result && result.accepted ? "#e8d44d" : "#e5484d");
+      }
+    }
+  });
+
+  for (let i = 0; i < CONFIG.numBots; i++) {
+    bridge.subscribe(`/robot_${i}/pose`, "geometry_msgs/msg/PointStamped", (msg) => {
+      botPose[i] = { x: msg.point.x, y: msg.point.y };
+    });
+    bridge.subscribe(`/robot_${i}/mission_state`, "std_msgs/msg/String", (msg) => {
+      try { botMission[i] = JSON.parse(msg.data); } catch {}
+    });
+  }
+}
+
+// ---- controls ----
+document.getElementById("connectBtn").addEventListener("click", () => {
+  CONFIG.numBots = parseInt(document.getElementById("numBots").value, 10) || 5;
+  CONFIG.gridNx = parseFloat(document.getElementById("gridNx").value) || 5;
+  CONFIG.gridNy = parseFloat(document.getElementById("gridNy").value) || 4;
+  CONFIG.gridMinX = parseFloat(document.getElementById("gridMinX").value) || 0;
+  CONFIG.gridMinY = parseFloat(document.getElementById("gridMinY").value) || 0;
+  CONFIG.cellW = parseFloat(document.getElementById("cellW").value) || 1;
+  CONFIG.cellH = parseFloat(document.getElementById("cellH").value) || 1;
+  grid = makeGrid(CONFIG.gridNx, CONFIG.gridNy, CONFIG.gridMinX, CONFIG.gridMinY, CONFIG.cellW, CONFIG.cellH);
+  fold = new ArenaFold(grid.ids);
+  feedEl.innerHTML = "";
+  for (const k of Object.keys(botPose)) delete botPose[k];
+  for (const k of Object.keys(botMission)) delete botMission[k];
+
+  const url = document.getElementById("url").value.trim();
+  bridge.disconnect();
+  bridge.subs.clear();
+  subscribeAll();
+  bridge.connect(url);
+});
+
+resizeCanvas();
+requestAnimationFrame(render);
+renderBotCards();
+</script>
+</body>
+</html>
