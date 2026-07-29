@@ -8,18 +8,22 @@
 #   * mock_pioneer       stand-in for the pioneer_explorer Webots controller
 #
 # Scenario: 8 sectors over the arena, all reachable. Robot 4's sensor streams
-# die at t=6s and recover at t=26s: the fleet must fold its not-ok beacon into
+# die at t=6s and recover at t=45s: the fleet must fold its not-ok beacon into
 # an unhealthy verdict (claims released and refused), reject the detection it
 # reports while untrusted, readmit it on recovery, and still sweep every
-# sector. Robot 1 reports a detection while healthy: accepted everywhere.
+# sector. Robot 1 reports a detection while healthy: accepted immediately.
+# Robot 4's detection is rejected while unhealthy, then retried and accepted
+# once robot 4 is readmitted -- a real sighting is never silently lost just
+# because the reporting bot was untrusted at the moment it first tried.
 #
 # Asserts (application layer):
 #   * Full coverage: every sector explored, phase done on all 5 bots.
 #   * Claim exclusivity: no snapshot shows one bot holding two sectors.
 #   * Health verdicts: the unhealthy episode is observed on every bot, and
 #     the final state has robot 4 readmitted (no vote/tally protocol needed).
-#   * Detection gating: exactly the healthy robot's detection is accepted,
-#     identically on every bot.
+#   * Detection gating: the healthy robot's report lands immediately; the
+#     unhealthy robot's report is rejected while untrusted, then retried and
+#     accepted on readmission -- both land, identically on every bot.
 #   * The 5 vertex_nodes deliver byte-identical /vertex/event streams.
 #
 # Run in the Jazzy container:  docker compose run --rm sim simtest
@@ -168,9 +172,11 @@ class TestArenaExploration(unittest.TestCase):
             for i in range(N)]
 
         # Run until, on every bot: coverage is done, robot 4 has been
-        # readmitted (post-recovery beacon folded), and the accepted
-        # detection has landed. Beacons keep folding after done, so
-        # readmission needs no extra machinery.
+        # readmitted (post-recovery beacon folded), and both detections have
+        # landed -- robot 1's immediately, robot 4's retried after readmission
+        # (see D2: a rejected-while-unhealthy detection is never silently
+        # lost, it lands once the reporter is healthy again). Beacons keep
+        # folding after done, so readmission needs no extra machinery.
         def settled():
             for i in range(N):
                 st = latest[i]
@@ -178,7 +184,7 @@ class TestArenaExploration(unittest.TestCase):
                     return False
                 if st.get("unhealthy"):
                     return False
-                if len(st.get("detections", [])) != 1:
+                if len(st.get("detections", [])) != 2:
                     return False
             return True
 
@@ -199,9 +205,10 @@ class TestArenaExploration(unittest.TestCase):
                             f"robot_{i} never saw robot 4 marked unhealthy")
             self.assertEqual(st.get("unhealthy", []), [],
                              f"robot_{i}: robot 4 was not readmitted: {st}")
-            # detection gating: the healthy report accepted, the unhealthy
-            # one rejected — identically everywhere
-            self.assertEqual(st.get("detections"), [[1, 1, "deer"]],
+            # detection gating: the healthy report lands immediately, the
+            # unhealthy one is rejected then retried and lands on
+            # readmission — both present, identically everywhere
+            self.assertEqual(st.get("detections"), [[1, 1, "deer"], [4, 1, "deer"]],
                              f"robot_{i} detections diverge: {st}")
 
         # claim exclusivity (one sector per bot at any observed instant)
