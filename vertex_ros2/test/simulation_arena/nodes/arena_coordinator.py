@@ -60,6 +60,10 @@ class ArenaCoordinator(VertexAgent):
         self.declare_parameter("cell_h", 7.5)
         self.declare_parameter("claim_interval_sec", 1.0)
         self.declare_parameter("cover_radius", 1.5)
+        # after losing a claim race on a sector, avoid re-picking it for this
+        # long, so two bots that collide on the same nearest sector diverge
+        # within a cycle or two instead of re-colliding every interval
+        self.declare_parameter("lost_avoid_sec", 3.0)
         # health: beacon period, and how stale a sensor stream (or the
         # telemetry feed itself) may be before this bot self-reports not-ok
         self.declare_parameter("health_interval_sec", 1.0)
@@ -86,6 +90,7 @@ class ArenaCoordinator(VertexAgent):
             float(p("cell_w")), float(p("cell_h")))
         self.claim_interval = float(p("claim_interval_sec"))
         self.cover_radius = float(p("cover_radius"))
+        self.lost_avoid_sec = float(p("lost_avoid_sec"))
         self.health_interval = float(p("health_interval_sec"))
         self.stream_timeout = float(p("stream_timeout_sec"))
         self.suspect_after = float(p("suspect_after_sec"))
@@ -100,7 +105,8 @@ class ArenaCoordinator(VertexAgent):
         self._stream_ages = None          # latest telemetry payload
         self._telemetry_stamp = None      # when it arrived (local clock)
         self._pending_detections = []     # robot detections awaiting proposal
-        self._proposed_detections = set() # (epoch, id) already relayed
+        self._inflight_detections = {}    # (epoch, id) -> det dict, sent, unconfirmed
+        self._confirmed_detections = set()  # (epoch, id) landed in state.detections
 
         now = self.get_clock().now()
         self._last_claim = now
@@ -113,6 +119,11 @@ class ArenaCoordinator(VertexAgent):
         self._seq_seen = {}               # bot -> (epoch, bot, seq) last noted
         self._suspect_sent = set()        # (epoch, victim, seen_seq) proposed
         self._reset_seen = 0
+        # claim-loop bookkeeping: which sector my most recent claim attempt
+        # targeted (pending resolution), and sectors I recently lost a claim
+        # race on (temporarily avoided by _pick_sector, see lost_avoid_sec)
+        self._last_claim_sector = None    # (epoch, sector), or None if resolved
+        self._recently_lost = {}          # (epoch, sector) -> sim time I lost it
         # physical-outcome bookkeeping for the sector I am pursuing
         self._pursuit = None              # (epoch, sector) currently driven
         self._pursuit_best = None         # closest distance achieved so far
@@ -165,6 +176,34 @@ class ArenaCoordinator(VertexAgent):
                    f"unhealthy={sorted(self.state.unhealthy)} "
                    f"detections={len(self.state.detections)} "
                    f"phase={self.state.phase}")
+        self._check_my_detections(recs)
+
+    def _check_my_detections(self, recs):
+        """Resolve any of my own detection proposals just processed by the
+        fold: confirm if they landed in state.detections, or requeue them for
+        retry if the fold rejected them (e.g. I was unhealthy at that exact
+        consensus point). Without this, a real sighting can be silently and
+        permanently lost purely because of ordering luck between a health
+        flip and the detection tx (see README, "consensus on robot health
+        before accepting detections")."""
+        for r in recs:
+            if not r or r.get("op") != "detection" or r.get("bot") != self.my_id:
+                continue
+            seq = r.get("seq")
+            key = (self.state.epoch, seq)
+            if key in self._confirmed_detections:
+                continue
+            det = self._inflight_detections.pop(key, None)
+            if det is None:
+                continue           # not one of mine currently in flight
+            landed = any(d["bot"] == self.my_id and d["seq"] == seq
+                         for d in self.state.detections)
+            if landed:
+                self._confirmed_detections.add(key)
+            else:
+                self._flog(f"DETECTION-REJECTED seq={seq} "
+                           f"(unhealthy at fold time) -> requeued")
+                self._pending_detections.append(det)
 
     def on_state_changed(self):
         # silence-lease bookkeeping: note every folded beacon advance
@@ -174,7 +213,31 @@ class ArenaCoordinator(VertexAgent):
             if self._seq_seen.get(b) != key:
                 self._seq_seen[b] = key
                 self._beacon_advanced[b] = now
+        self._check_claim_outcome()
         self._react()
+
+    def _check_claim_outcome(self):
+        """Resolve my most recent claim attempt, if still pending: if someone
+        else ended up holding (or already resolved) the sector I targeted, I
+        lost that race — remember it briefly so _pick_sector diverges to a
+        different sector instead of re-colliding with the same peer every
+        claim_interval_sec."""
+        pending = self._last_claim_sector
+        if pending is None:
+            return
+        epoch, sector = pending
+        if epoch != self.state.epoch:
+            self._last_claim_sector = None   # epoch moved on (reset)
+            return
+        holder = self.state.claimed.get(sector)
+        if holder == self.my_id:
+            self._last_claim_sector = None
+            return
+        if holder is not None or sector in self.state.explored \
+                or sector in self.state.unreachable:
+            self._recently_lost[(epoch, sector)] = self._now_sec()
+            self._flog(f"CLAIM-LOST sector={sector} to bot={holder}")
+            self._last_claim_sector = None
 
     # ---- inputs ----
     def _on_pose(self, msg: PointStamped):
@@ -264,13 +327,15 @@ class ArenaCoordinator(VertexAgent):
                         "victim": b, "seen_seq": seen})
 
         # 3. Relay the robot's detections into consensus (the fold accepts
-        #    them only while this bot is healthy — that is the point).
+        #    them only while this bot is healthy at fold time — if a health
+        #    flip races a detection, _check_my_detections requeues it here
+        #    instead of losing it silently).
         while self._pending_detections:
             det = self._pending_detections.pop(0)
-            key = (self.state.epoch, det["id"])
-            if key in self._proposed_detections:
+            key = (self.state.epoch, int(det["id"]))
+            if key in self._confirmed_detections or key in self._inflight_detections:
                 continue
-            self._proposed_detections.add(key)
+            self._inflight_detections[key] = det
             self._emit({"op": "detection", "bot": self.my_id,
                         "seq": int(det["id"]), "label": det.get("label"),
                         "x": det.get("x"), "y": det.get("y")})
@@ -331,8 +396,10 @@ class ArenaCoordinator(VertexAgent):
                     self._outcome_sent = key_now
 
         # 5. Claim loop: healthy and idle -> claim the nearest free sector.
-        #    Everyone claims concurrently; consensus order arbitrates and
-        #    losers just claim again next interval.
+        #    Everyone claims concurrently; consensus order arbitrates, and a
+        #    loser's next pick avoids the sector it just lost (see
+        #    _pick_sector / _check_claim_outcome) so two colliding bots
+        #    diverge instead of re-colliding every interval.
         if role == "idle" and self._last_ok \
                 and self._immobilized_at is None \
                 and self.my_id not in self.state.unhealthy:
@@ -340,19 +407,32 @@ class ArenaCoordinator(VertexAgent):
                 sector = self._pick_sector()
                 if sector is not None:
                     self._last_claim = now
+                    self._last_claim_sector = (self.state.epoch, sector)
                     self._emit({"op": "claim", "bot": self.my_id,
                                 "sector": sector})
 
         self._react()
 
     def _pick_sector(self):
-        """Nearest claimable sector centre; deterministic tie-break on id."""
+        """Nearest claimable sector centre, avoiding sectors I recently lost a
+        claim race on for lost_avoid_sec (so two bots that collide on the
+        same nearest sector diverge within a cycle or two instead of
+        re-colliding every claim_interval_sec); deterministic tie-break on
+        id. Falls back to the full candidate set if avoiding recent losses
+        would leave nothing to claim."""
         avail = self.state.claimable_sectors()
         if not avail:
             return None
+        now = self._now_sec()
+        epoch = self.state.epoch
+        self._recently_lost = {k: t for k, t in self._recently_lost.items()
+                               if now - t < self.lost_avoid_sec}
+        candidates = [s for s in avail if (epoch, s) not in self._recently_lost]
+        if not candidates:
+            candidates = avail
         if self.pose_x is None:
-            return avail[0]
-        return min(avail, key=lambda s: (
+            return candidates[0]
+        return min(candidates, key=lambda s: (
             (self.pose_x - self.centers[s][0]) ** 2
             + (self.pose_y - self.centers[s][1]) ** 2, s))
 
