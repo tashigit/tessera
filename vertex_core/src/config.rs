@@ -137,6 +137,10 @@ impl Default for BridgeConfig {
 }
 
 /// The fully-resolved node configuration.
+///
+/// SECURITY: `key` is secret key material. Do not add `#[derive(Debug)]` to this
+/// struct and never log it — `KeySecret`'s `Debug`/`Display` both render the raw
+/// base58 secret, so any such formatting would leak the private key.
 pub struct Config {
     pub bind_address: String,
     pub key: KeySecret,

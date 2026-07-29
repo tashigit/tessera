@@ -20,6 +20,7 @@
 import json
 import os
 import signal
+import tempfile
 import time
 import unittest
 
@@ -49,9 +50,22 @@ def _load_peers():
         return json.load(f)
 
 
+def _secret_key_file(secret, tmpdir, name):
+    # vertex.secret_key_path over vertex.secret_key_base58: the base58 form is a
+    # normal ROS 2 parameter, so once declared the private key is readable by any
+    # DDS participant via `ros2 param get`/`ros2 param dump`.
+    # The file form keeps the parameter store holding only a path.
+    path = os.path.join(tmpdir, f"{name}.key")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(secret)
+    return path
+
+
 @pytest.mark.launch_test
 def generate_test_description():
     peers = _load_peers()
+    keydir = tempfile.mkdtemp(prefix="vertex_system_three_peers_keys_")
     actions = []
     for i, me in enumerate(peers):
         others = [p for j, p in enumerate(peers) if j != i]
@@ -75,7 +89,7 @@ def generate_test_description():
                 parameters=[
                     {
                         "vertex.bind_address": me["addr"],
-                        "vertex.secret_key_base58": me["secret"],
+                        "vertex.secret_key_path": _secret_key_file(me["secret"], keydir, f"v{i}"),
                         "vertex.peers": peer_specs,
                         "options.heartbeat_us": 50000,
                     }

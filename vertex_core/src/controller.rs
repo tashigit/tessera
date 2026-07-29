@@ -52,6 +52,9 @@ impl From<tashi_vertex::Error> for ControllerError {
 /// [`Config`] on the ROS thread and moved onto the engine thread. Keys travel
 /// as DER bytes and are re-parsed on the far side, so no `!Send` Vertex type
 /// crosses the boundary.
+///
+/// SECURITY: `secret_der` is secret key material. Do not add `#[derive(Debug)]`
+/// to this struct and never log it.
 struct EngineParams {
     bind_address: String,
     secret_der: Vec<u8>,

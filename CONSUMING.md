@@ -93,11 +93,18 @@ Node(package="vertex_ros2", executable="vertex_node", name=f"vertex{i}",
                + [("/vertex/lifecycle/state", f"/agent_{i}/vertex/lifecycle/state")],
      parameters=[{
          "vertex.bind_address": me["addr"],
-         "vertex.secret_key_base58": me["secret"],   # prefer secret_key_path in production
+         "vertex.secret_key_path": key_path,   # a 0600 file holding me["secret"]
          "vertex.peers": [f"{p['public']}@{p['addr']}" for p in others],
          "options.heartbeat_us": 50000,
      }])
 ```
+
+Always use `secret_key_path`, never `secret_key_base58`: once a value is
+declared as a ROS 2 parameter it is readable by any DDS participant on the
+mesh via `ros2 param get`/`ros2 param dump`, so inlining the private key
+there hands it to anyone on the network. Write the key to a file the node
+user owns exclusively (`chmod 600`) and point `secret_key_path` at it —
+`vertex_node` rejects the file outright if group/other can read or write it.
 
 Size the fleet for the faults you must survive: Vertex is BFT with the
 standard quorum, so `n = 4` is the smallest fleet that tolerates one crashed
