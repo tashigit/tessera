@@ -19,7 +19,7 @@
     flex-wrap: wrap;
   }
   header h1 { font-size: 15px; margin: 0 12px 0 0; font-weight: 600; }
-  header label { color: var(--dim); font-size: 12px; }
+  header label, header .grp { color: var(--dim); font-size: 12px; }
   header input {
     background: #0b0e14; border: 1px solid var(--border); color: var(--text);
     border-radius: 4px; padding: 3px 6px; font: 12px monospace; width: 62px;
@@ -88,9 +88,9 @@
   <h1>Arena Exploration — Live Viewer</h1>
   <label>rosbridge <input id="url" value="ws://localhost:9090"></label>
   <label>bots <input id="numBots" value="5"></label>
-  <label>grid <input id="gridNx" value="5">×<input id="gridNy" value="4"></label>
-  <label>origin <input id="gridMinX" value="-20">,<input id="gridMinY" value="-15"></label>
-  <label>cell <input id="cellW" value="8">×<input id="cellH" value="7.5"></label>
+  <span class="grp">grid <input id="gridNx" value="5" aria-label="grid columns (nx)">×<input id="gridNy" value="4" aria-label="grid rows (ny)"></span>
+  <span class="grp">origin <input id="gridMinX" value="-20" aria-label="grid origin x">,<input id="gridMinY" value="-15" aria-label="grid origin y"></span>
+  <span class="grp">cell <input id="cellW" value="8" aria-label="cell width">×<input id="cellH" value="7.5" aria-label="cell height"></span>
   <button id="connectBtn">Connect</button>
   <span id="status" class="disconnected">disconnected</span>
 </header>
@@ -122,7 +122,12 @@ const CONFIG = {
   numBots: 5, gridNx: 5, gridNy: 4, gridMinX: -20, gridMinY: -15, cellW: 8, cellH: 7.5,
 };
 
-const BOT_COLORS = ["#e6194b","#3cb44b","#4363d8","#f58231","#911eb4","#42d4f4","#bfef45","#f032e6"];
+// No red/crimson in this palette: red is reserved for the unhealthy health
+// ring, and a bot whose identity color is also reddish reads as unhealthy
+// at a glance even when it isn't (caught in a live visual check — bot 0's
+// original color #e6194b was nearly indistinguishable from the ring's
+// #e5484d until zoomed in).
+const BOT_COLORS = ["#4363d8","#3cb44b","#f58231","#911eb4","#42d4f4","#ffd700","#f032e6","#469990"];
 const botColor = (b) => BOT_COLORS[((b % BOT_COLORS.length) + BOT_COLORS.length) % BOT_COLORS.length];
 function hexAlpha(hex, a) {
   const n = parseInt(hex.slice(1), 16);
@@ -371,10 +376,29 @@ function transform() {
   };
 }
 
+// Live per-robot mission_state is a current-state snapshot (republished every
+// tick), unlike our own /vertex/event fold, which only knows about records
+// published after we subscribed — ROS topics don't replay history to a new
+// subscriber. Anyone opening this viewer mid-mission or after it finishes
+// would otherwise see every sector as blank even though the mission is done
+// (caught in a live check: connected after a run had already completed, and
+// the map showed nothing claimed while the sidebar correctly said "done").
+// Use mission_state as ground truth for sector state; keep the fold only for
+// "which bot explored it" attribution, which mission_state doesn't carry.
+function currentSnapshot() {
+  for (let i = 0; i < CONFIG.numBots; i++) if (botMission[i]) return botMission[i];
+  return null;
+}
+
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const tr = transform();
   const now = performance.now();
+  const snap = currentSnapshot();
+  const claimed = snap ? snap.claimed || {} : fold.claimed;
+  const explored = snap ? new Set(snap.explored || []) : fold.explored;
+  const unreachable = snap ? new Set(snap.unreachable || []) : fold.unreachable;
+  const unhealthy = snap ? new Set(snap.unhealthy || []) : fold.unhealthy;
 
   for (const sid of grid.ids) {
     const [cx, cy] = grid.centers[sid];
@@ -383,13 +407,20 @@ function render() {
     const x0 = sx - w / 2, y0 = sy - h / 2;
 
     let fill = "#f4f4f4", stroke = "#333", dashed = false, label = "";
-    if (fold.unreachable.has(sid)) {
+    if (unreachable.has(sid)) {
       fill = "#3a0a0a"; stroke = "#7a1414";
-    } else if (fold.explored.has(sid)) {
+    } else if (explored.has(sid)) {
       const bot = fold.exploredBy[sid];
-      fill = hexAlpha(botColor(bot), 0.85); stroke = botColor(bot); label = "B" + bot;
-    } else if (sid in fold.claimed) {
-      const bot = fold.claimed[sid];
+      if (bot != null) {
+        fill = hexAlpha(botColor(bot), 0.85); stroke = botColor(bot); label = "B" + bot;
+      } else {
+        // explored per the live snapshot, but we joined too late to see the
+        // raw event that says who — be honest about the gap instead of
+        // guessing or leaving it looking unclaimed.
+        fill = "#2a3a2f"; stroke = "#4a6a55"; label = "?";
+      }
+    } else if (sid in claimed) {
+      const bot = claimed[sid];
       fill = hexAlpha(botColor(bot), 0.28); stroke = botColor(bot); dashed = true; label = "B" + bot + "…";
     }
     const flash = sectorFlash[sid];
@@ -420,7 +451,7 @@ function render() {
     const [sx, sy] = tr.toScreen(p.x, p.y);
     ctx.beginPath(); ctx.arc(sx, sy, 10, 0, Math.PI * 2);
     ctx.fillStyle = botColor(i); ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = fold.unhealthy.has(i) ? "#e5484d" : "#35c463"; ctx.stroke();
+    ctx.lineWidth = 3; ctx.strokeStyle = unhealthy.has(i) ? "#e5484d" : "#35c463"; ctx.stroke();
     ctx.fillStyle = "#0b0e14"; ctx.font = "bold 11px ui-monospace, monospace"; ctx.textAlign = "center";
     ctx.fillText(String(i), sx, sy + 4);
   }
@@ -437,7 +468,10 @@ function renderBotCards() {
   el.innerHTML = "";
   for (let i = 0; i < CONFIG.numBots; i++) {
     const m = botMission[i] || {};
-    const healthy = !fold.unhealthy.has(i);
+    // this robot's own mission_state.unhealthy is a current snapshot, same
+    // reasoning as currentSnapshot() in render(): don't rely on the fold
+    // alone, it may have missed history from before we connected.
+    const healthy = !(m.unhealthy || []).includes(i);
 
     const card = document.createElement("div");
     card.className = "botcard";
