@@ -254,9 +254,11 @@
         <span class="c"># was released must re-claim before reporting</span>
         <span class="k">if</span> self.claimed.get(sector) == bot:
             self.explored.add(sector)
+            self.explored_by[sector] = bot
             <span class="k">del</span> self.claimed[sector]
 </pre></div>
-<p>Exclusivity is not enforced anywhere else. There is no lock service and no arbiter node. Two robots may race a claim, and the one whose record lands first in consensus order wins, on every robot, including the loser. The loser's agent sees the fold say so and claims a different sector.</p>
+<p>Exclusivity is not enforced anywhere else. There is no lock service and no arbiter node. Two robots may race a claim, and the one whose record lands first in consensus order wins, on every robot, including the loser. The loser's agent sees the fold say so and claims a different sector — not by incidental drift toward whatever's nearest, but deliberately: the coordinator remembers sectors it just lost a race on (<code>lost_avoid_sec</code>) and excludes them from its next pick for a short window, so two colliding bots diverge within a cycle or two instead of re-colliding on the same sector every claim interval.</p>
+<p>The fold also keeps a small piece of state the predecessor's MQTT vote/tally never needed: <code>explored_by</code> (sector → bot), set alongside <code>explored</code> when a sector is credited. It costs one field and one line in <code>apply_record</code>, and it's the difference between "this sector is done" and "this sector is done, and here's who did it" — useful for anything downstream that wants per-robot attribution, like a monitoring dashboard, without re-deriving it from the raw event log.</p>
 <p>Compare the health machinery line for line with the predecessor:</p>
 <div class="beforeafter">
   <div class="ba before"><h4>Before: vote and tally</h4><ul>
@@ -345,6 +347,7 @@ docker compose run --rm --service-ports sim simarena
 python3 vertex_ros2/test/simulation/nodes/verify_consensus_logs.py \
     vertex_ros2/test/simulation_arena/logs <span class="s">'robot_*_arena.log'</span>
 </pre></div>
+<p>Since a real deployment carries no in-world markers, watching a run live is otherwise a matter of tailing logs. <code>vertex_ros2/test/simulation_arena/viewer/arena_viewer.html</code> is an optional, self-contained web viewer for exactly that: open it in a browser, point it at the same rosbridge WebSocket, and it decodes <code>/vertex/event</code> client-side to render the sector grid, live robot positions, and a "shared consensus state" panel comparing every robot's own <code>mission_state</code> side by side — the same kind of comparison <code>verify_consensus_logs.py</code> does after the fact, but live. See the simulation's README for setup.</p>
 
 <h2 id="tests">What the tests assert</h2>
 <p>The headless launch_test scripts a sensor outage on robot 4 (streams die at t=6&nbsp;s, recover at t=45&nbsp;s) and plants two detections, one on a healthy robot and one on robot 4 mid-outage:</p>
@@ -353,7 +356,7 @@ python3 vertex_ros2/test/simulation/nodes/verify_consensus_logs.py \
   <tr><td>Full coverage</td><td>every sector explored, <code>phase == done</code>, on all five robots</td></tr>
   <tr><td>Claim exclusivity</td><td>no snapshot ever shows a robot holding two sectors</td></tr>
   <tr><td>Health agreement</td><td>the outage verdict observed on every robot, and the final state shows robot 4 readmitted</td></tr>
-  <tr><td>Detection gating</td><td>exactly the healthy detection accepted, identical list everywhere</td></tr>
+  <tr><td>Detection gating</td><td>the healthy detection lands immediately; robot 4's is rejected while it's unhealthy, then automatically retried and accepted once readmitted — both present, identical list everywhere. A real sighting is never silently lost just because the reporter was untrusted at the moment it first tried</td></tr>
   <tr><td>Consensus</td><td>all five <code>/vertex/event</code> streams byte-identical</td></tr>
   <tr><td>Clean shutdown</td><td>exit codes 0 / <code>-SIGINT</code> / <code>-SIGTERM</code></td></tr>
 </table></div>

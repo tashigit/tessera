@@ -212,7 +212,7 @@ c.submit(payload);                        <span class="c">// bytes -&gt; consens
     <span class="c">// ev: EventRecord, finalized, identical order on every peer</span>
 }
 c.deactivate()?;                          <span class="c">// -&gt; Inactive (stops the engine thread)</span>
-c.shutdown()?;                            <span class="c">// -&gt; Finalized (idempotent teardown)</span>
+c.shutdown()?;                            <span class="c">// -&gt; Finalized (not idempotent: a second call errors)</span>
 </pre></div>
 
 <p>Key types, all defined in the crate:</p>
@@ -222,7 +222,7 @@ c.shutdown()?;                            <span class="c">// -&gt; Finalized (id
   <tr><td><code>Config</code></td><td><code>bind_address</code> (literal <code>IP:port</code>, no DNS), <code>key: KeySecret</code>, <code>peers: Vec&lt;PeerConfig&gt;</code>, <code>joining_running_session</code>, <code>bridge</code>, <code>options</code></td></tr>
   <tr><td><code>PeerConfig</code></td><td>one remote peer: address plus <code>KeyPublic</code>. Parses the <code>"&lt;base58_pubkey&gt;@&lt;ip:port&gt;"</code> spec form</td></tr>
   <tr><td><code>BridgeConfig</code></td><td>channel bounds: <code>tx_channel_capacity</code> 1024, <code>event_channel_capacity</code> 4096 by default</td></tr>
-  <tr><td><code>VertexOptions</code></td><td>plain mirror of every engine tunable. Defaults match the engine's: <code>heartbeat_us</code> 500000, <code>target_ack_latency_ms</code> 400, <code>transaction_channel_size</code> 32, dynamic epoch sizing and hole punching on</td></tr>
+  <tr><td><code>VertexOptions</code></td><td>mirrors 15 of the engine's 19 tunables (missing: <code>max_resident_bytes</code>, <code>storage_path</code>, <code>strict_replay_verify</code>, <code>wait_for_state_report</code>). Defaults match the engine's: <code>heartbeat_us</code> 500000, <code>target_ack_latency_ms</code> 400, <code>transaction_channel_size</code> 32, dynamic epoch sizing and hole punching on</td></tr>
   <tr><td><code>EventRecord</code></td><td>a finalized event, fully copied out of FFI memory: <code>consensus_at</code>, <code>created_at</code>, <code>hash: [u8; 32]</code>, <code>creator_pub_der</code>, <code>whitened_signature</code>, <code>transactions: Vec&lt;TransactionRecord&gt;</code></td></tr>
   <tr><td><code>Status</code> / <code>StatusSnapshot</code></td><td>lock-free counters: running, peer count, <code>tx_submitted_total</code>, <code>tx_rejected_total</code>, <code>events_published_total</code>, last error</td></tr>
 </table></div>
@@ -249,7 +249,7 @@ tokio = { version = <span class="s">"1"</span>, features = [<span class="s">"rt-
 </pre></div>
 <p>Two build facts to know before your first <code>cargo build</code>:</p>
 <ul>
-  <li><strong>The C engine.</strong> <code>tashi-vertex-rs</code> builds against <code>libtashi-vertex</code> (the actual consensus engine, a C library). Its build downloads the release archive by default. To build against a local checkout instead, set <code>TASHI_VERTEX_LOCAL_DIR</code> to it (tessera's Docker harness exposes the same switch).</li>
+  <li><strong>The C engine.</strong> <code>tashi-vertex-rs</code> builds against <code>libtashi-vertex</code> (the actual consensus engine, a C library). Its build downloads the release archive by default. To build against a local checkout instead, set <code>TASHI_VERTEX_LOCAL_BUILD=1</code> and point <code>TASHI_VERTEX_LOCAL_DIR</code> at it — the flag gates the local build, the path just tells it where to look, and setting the path alone leaves the flag off and the release download still happens. Tessera's Docker harness sets both automatically whenever <code>TASHI_VERTEX_LOCAL_DIR</code> is present (<code>docker/entrypoint.sh</code>).</li>
   <li><strong>The rpath problem.</strong> The bindings' build script adds an rpath only to <em>its own</em> binaries. Downstream binaries link <code>libtashi-vertex.so</code>/<code>.dylib</code> but cannot find it at runtime. <code>vertex_core</code> ships a <code>build.rs</code> that locates the library under the shared target directory and bakes an absolute rpath plus <code>$ORIGIN</code>-style fallbacks. Copy that <code>build.rs</code> into your crate, or export <code>LD_LIBRARY_PATH</code> the way tessera's <code>docker/entrypoint.sh</code> does (<code>export_tv_libpath</code>).</li>
 </ul>
 
@@ -390,7 +390,7 @@ std::thread::Builder::new().name(<span class="s">"event-pump"</span>.into()).spa
   <li><strong><code>KeySecret</code> is not <code>Clone</code>.</strong> To hand the same identity to two places, round-trip it through DER (<code>to_der_vec</code> / <code>from_der</code>), as the multi-node test does.</li>
   <li><strong>Slow event consumers.</strong> The outbound event channel is bounded (4096 by default). A consumer that stalls eventually blocks the engine task. Keep the pump loop trivial and hand off heavy work to another thread.</li>
   <li><strong>Expecting to rejoin after a restart.</strong> A restarted process is a new participant. <code>joining_running_session</code> exists for rejoining an in-flight session but is an upstream feature with limits. Design recovery at the protocol level (epochs and resets, as in the first tutorial).</li>
-  <li><strong>Timestamp units.</strong> The engine documents its timestamps as Unix time without a unit. Tessera pins the interpretation to nanoseconds in one function (<code>convert::nanos_to_time</code>). If that assumption ever changes upstream, it is a one-line fix, so route any time handling of your own through the same single point.</li>
+  <li><strong>Timestamp units.</strong> The upstream engine now documents its timestamps explicitly as nanoseconds since the Unix epoch, part of the API contract. Tessera still centralizes the interpretation in one function (<code>convert::nanos_to_time</code>) rather than inlining it everywhere, so if that contract ever changes it stays a one-line fix — route any time handling of your own through the same single point.</li>
   <li><strong>Sync points are placeholders.</strong> <code>SyncPointRecord.payload</code> is empty until upstream exposes accessors. Do not build features on it yet.</li>
 </ul>
 
@@ -425,7 +425,7 @@ std::thread::Builder::new().name(<span class="s">"event-pump"</span>.into()).spa
   <tr><td>The reference adapter</td><td><code>vertex_ros2/src/{main, node, params}.rs</code></td></tr>
 </table></div>
 
-<footer>Volume 3 of 3. I wrote this against vertex_core as shipped in tessera v0.1.0. Volume 1 covers the concepts and protocol design, Volume 2 the fleet API most projects should build on. Read those first if you have not.</footer>
+<footer>Volume 3 of the tessera tutorial series. I wrote this against vertex_core as shipped in tessera v0.1.0. Volume 1 covers the concepts and protocol design, Volume 2 the fleet API most projects should build on. Read those first if you have not.</footer>
 </main>
 </div>
 

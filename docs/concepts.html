@@ -232,7 +232,7 @@
   <div class="eyebrow">Tutorial · Volume 1 · Concepts and protocol design</div>
   <h1>Vertex consensus for ROS&nbsp;2: concepts and protocol design</h1>
   <p class="lede">This volume builds the mental model and the design skill: what the Tashi Vertex engine actually guarantees, how leaderless fleet coordination falls out of one ordered log, and how to design a correct application protocol before writing code. I use tessera's four-robot route-exploration simulation as the worked example. For implementation you then build on the <code>vertex_fleet</code> library, which is Volume&nbsp;2; this volume shows the library's concepts and, where useful, what it does underneath.</p>
-  <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;Concepts and protocol design (you are here) &nbsp;→&nbsp; 2&nbsp;·&nbsp;<a href="fleet-api.html">The fleet API</a> (build your integration) &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> (non-ROS embeddings and adapters). In a hurry? Start with Volume&nbsp;2 and return here when you design your own protocol.</div>
+  <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;Concepts and protocol design (you are here) &nbsp;→&nbsp; 2&nbsp;·&nbsp;<a href="fleet-api.html">The fleet API</a> (build your integration) &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> (non-ROS embeddings and adapters) &nbsp;·&nbsp; 4&nbsp;·&nbsp;<a href="porting.html">Porting a broker-based fleet</a> (arriving with an MQTT-coordinated fleet). In a hurry? Start with Volume&nbsp;2 and return here when you design your own protocol.</div>
   <p class="kicker">You need: ROS 2 Jazzy (or the tessera Docker harness), Rust, and access to the <code>tessera</code> and <code>tashi-vertex-rs</code> repositories.</p>
 </header>
 
@@ -249,6 +249,7 @@
   <tr><th>Interface</th><th>Type</th><th>Direction</th><th>Meaning</th></tr>
   <tr><td><code>/vertex/tx</code></td><td><code>VertexTransaction</code></td><td>you → engine</td><td>submit opaque <code>payload</code> bytes</td></tr>
   <tr><td><code>/vertex/event</code></td><td><code>VertexEvent</code></td><td>engine → you</td><td>finalized events in consensus order: <code>hash</code>, <code>transactions[]</code>, <code>consensus_at</code>, <code>created_at</code></td></tr>
+  <tr><td><code>/vertex/sync_point</code></td><td><code>VertexSyncPoint</code></td><td>engine → you</td><td>a consensus sync point (an engine-management decision a super-majority agreed on); <code>payload</code> is empty until upstream exposes accessors for it</td></tr>
   <tr><td><code>/vertex/transition</code></td><td><code>VertexTransition</code> srv</td><td>you → engine</td><td>lifecycle: <code>configure / activate / deactivate / cleanup / shutdown</code></td></tr>
   <tr><td><code>/vertex/status</code></td><td><code>VertexStatus</code> srv</td><td>you → engine</td><td>snapshot: running, peer count, tx and event counters, last error</td></tr>
   <tr><td><code>/vertex/lifecycle/state</code></td><td>topic</td><td>engine → you</td><td>current lifecycle state</td></tr>
@@ -377,7 +378,7 @@ ros2 service call /agent_0/vertex/transition vertex_ros2_msgs/srv/VertexTransiti
 <p>Sanity check the mesh with <code>ros2 service call /agent_0/vertex/status vertex_ros2_msgs/srv/VertexStatus</code>: it reports <code>running</code>, <code>peer_count</code>, and submit/reject counters.</p>
 
 <h2 id="s5"><span class="stepno">Step 5</span>Define the payload protocol</h2>
-<p>Vertex moves opaque bytes, so the record format is entirely yours. Small JSON records work well and stay debuggable. The example's protocol is four route-exploration verbs plus three housekeeping ones, and its shape transfers to almost any task-allocation problem:</p>
+<p>Vertex moves opaque bytes, so the record format is entirely yours. Small JSON records work well and stay debuggable. The example's protocol is four route-exploration verbs plus two housekeeping ones, and its shape transfers to almost any task-allocation problem:</p>
 <div class="code"><span class="lang">jsonc — one record per transaction</span><button class="copy">Copy</button><pre>
 { <span class="f">"op"</span>: <span class="s">"claim"</span>,   <span class="f">"bot"</span>: 2, <span class="f">"route"</span>: <span class="s">"R1"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// propose to take a task</span>
 { <span class="f">"op"</span>: <span class="s">"blocked"</span>, <span class="f">"bot"</span>: 2, <span class="f">"route"</span>: <span class="s">"R1"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// my sensors say: task impossible</span>
@@ -492,7 +493,7 @@ ros2 service call /agent_0/vertex/transition vertex_ros2_msgs/srv/VertexTransiti
     <span class="k">assert</span> <span class="k">all</span>(f.assigned == {0: <span class="s">"R1"</span>} <span class="k">for</span> f <span class="k">in</span> fleet)   <span class="c"># one winner, everywhere</span>
 </pre></div>
 <h3>Integration: real consensus, mock bodies</h3>
-<p>Use <code>launch_testing</code> to start real <code>vertex_node</code> peers, your application nodes, and a mock in place of the physical layer (the example's <code>mock_robot.py</code> is 100 lines: it turns drive commands into pose updates). Assert the outcomes, not the timing: everyone finishes, everyone agrees, no task was ever held twice. Then add the assertion that catches everything else, byte-identical event streams:</p>
+<p>Use <code>launch_testing</code> to start real <code>vertex_node</code> peers, your application nodes, and a mock in place of the physical layer (the example's <code>mock_robot.py</code> is about 120 lines: it turns drive commands into pose updates). Assert the outcomes, not the timing: everyone finishes, everyone agrees, no task was ever held twice. Then add the assertion that catches everything else, byte-identical event streams:</p>
 <div class="code"><span class="lang">python — inside the launch_test</span><button class="copy">Copy</button><pre>
 <span class="c"># collect (hash, payloads) per node from /agent_i/vertex/event, then:</span>
 min_len = <span class="k">min</span>(<span class="k">len</span>(events[i]) <span class="k">for</span> i <span class="k">in</span> <span class="k">range</span>(n))
@@ -501,13 +502,13 @@ min_len = <span class="k">min</span>(<span class="k">len</span>(events[i]) <span
         <span class="k">assert</span> events[0][idx] == events[i][idx]   <span class="c"># the total-order guarantee</span>
 </pre></div>
 <h3>Adversarial: kill things</h3>
-<p>The example ships three tests worth copying wholesale, each about 200 lines:</p>
+<p>The example ships three tests worth copying wholesale, each 220-270 lines:</p>
 <ul>
   <li><strong>Fault injection</strong> (<code>fault_injection.launch_test.py</code>): make the victim's task the only viable one, SIGKILL its engine, coordinator, and mock mid-task, and assert the survivors lease-timeout the task, re-claim it, and finish with byte-identical streams. With n=4 this proves f=1 for real.</li>
   <li><strong>Lifecycle churn</strong> (<code>lifecycle_churn.launch_test.py</code>): deactivate one engine mid-mission, force traffic, assert zero publishes on its <code>/vertex/event</code> while Inactive, reactivate, and finish.</li>
   <li><strong>Soak</strong> (<code>soak_missions.launch_test.py</code>): randomized back-to-back missions restarted through <code>reset</code> epochs, asserting every mission terminates consistently and engine RSS stays bounded.</li>
 </ul>
-<p>Wire the fast ones into CI on every push and keep the soak nightly. The example's <code>sim-test</code> job in <code>.github/workflows/ci.yml</code> is a working template.</p>
+<p>Wire the fast ones into CI on every push and keep the soak nightly. The example's <code>sim-test</code> job in <code>.github/workflows/ci.yml</code> is a working template — it now runs both simulations headless: this route-exploration suite, and the arena-exploration suite from Volume&nbsp;4.</p>
 
 <h2 id="pitfalls">Pitfalls I hit so you don't have to</h2>
 <ul>
@@ -554,7 +555,7 @@ min_len = <span class="k">min</span>(<span class="k">len</span>(events[i]) <span
   <tr><td>Engine contract (topics, params, lifecycle)</td><td><code>vertex_ros2/README.md</code></td></tr>
 </table></div>
 
-<footer>Volume 1 of 3. I wrote this against tessera v0.1.0 (vertex_ros2 and vertex_fleet). The engine contract (topics, message types, parameters, lifecycle verbs) is fixed by design. Check <code>vertex_ros2/README.md</code> in your checkout for anything version-specific.</footer>
+<footer>Volume 1 of the tessera tutorial series. I wrote this against tessera v0.1.0 (vertex_ros2 and vertex_fleet). The engine contract (topics, message types, parameters, lifecycle verbs) is fixed by design. Check <code>vertex_ros2/README.md</code> in your checkout for anything version-specific.</footer>
 </main>
 </div>
 
