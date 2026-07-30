@@ -100,6 +100,7 @@ class ArenaState(ReplicatedState):
     def wipe(self) -> None:
         self.claimed: dict[str, int] = {}   # sector -> bot, exclusive
         self.explored: set[str] = set()     # permanently covered
+        self.explored_by: dict[str, int] = {}  # sector -> bot that covered it
         self.unreachable: set[str] = set()  # condemned, excluded from the work
         self.unhealthy: set[int] = set()    # current fleet health verdicts
         self.health_seq: dict[int, int] = {}  # bot -> latest folded beacon seq
@@ -127,6 +128,7 @@ class ArenaState(ReplicatedState):
             # so coverage is never credited off a stale assignment.
             if self.claimed.get(sector) == bot:
                 self.explored.add(sector)
+                self.explored_by[sector] = bot
                 del self.claimed[sector]
         elif op == "abandon":
             if self.claimed.get(sector) == bot:
