@@ -198,6 +198,14 @@ class TestArenaExploration(unittest.TestCase):
             # full coverage: the whole arena swept
             self.assertEqual(sorted(st.get("explored", [])), ALL_SECTORS,
                              f"robot_{i} incomplete coverage: {st}")
+            # explored_by (wire-level): every sector attributed to a real bot,
+            # not just correct at the unit-fold level (test_arena_fsm.py) but
+            # actually serialized and delivered over the real mission_state
+            # topic identically on every robot
+            self.assertEqual(sorted(st.get("explored_by", {}).keys()), ALL_SECTORS,
+                             f"robot_{i} explored_by incomplete: {st}")
+            for s, b in st.get("explored_by", {}).items():
+                self.assertIn(b, range(N), f"robot_{i}: explored_by[{s}]={b} out of range")
             self.assertEqual(st.get("phase"), "done", f"robot_{i}: {st}")
             self.assertEqual(st.get("unreachable", []), [], f"robot_{i}: {st}")
             # the unhealthy episode was observed, and recovery readmitted bot 4

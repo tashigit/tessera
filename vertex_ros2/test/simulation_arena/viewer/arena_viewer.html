@@ -134,7 +134,7 @@
 
 <section id="consensus">
   <div id="consensusHead">Shared consensus state — each bot's own view</div>
-  <div id="consensusSub">Columns are what each bot's own <code>mission_state</code> currently reports, not a single shared blob — a highlighted cell means two bots currently disagree, which consensus should never let happen for more than a beat.</div>
+  <div id="consensusSub">Columns are what each bot's own <code>mission_state</code> currently reports, not a single shared blob — a highlighted cell means two bots have disagreed for over a second, which is a real divergence rather than ordinary publish-timing skew between independently-timed snapshots.</div>
   <div id="consensusBody">
     <div class="matrixWrap">
       <div class="matrixTitle">Sector ownership (claimed by / explored by / unreachable)</div>
@@ -153,6 +153,7 @@
   </div>
 </section>
 
+<script src="arena_fold.js"></script>
 <script>
 "use strict";
 
@@ -188,94 +189,8 @@ function makeGrid(nx, ny, minX, minY, cellW, cellH) {
 }
 let grid = makeGrid(CONFIG.gridNx, CONFIG.gridNy, CONFIG.gridMinX, CONFIG.gridMinY, CONFIG.cellW, CONFIG.cellH);
 
-// ---- deterministic fold, mirrors vertex_fleet.ReplicatedState + arena_fsm.ArenaState ----
-// (plus exploredBy, which Python's fold discards but the raw "explored" record
-// already carries — the whole point of decoding the real consensus stream
-// client-side instead of relying on a derived-state topic).
-class ArenaFold {
-  constructor(sectorIds) { this.sectorIds = sectorIds; this.epoch = 0; this.wipe(); }
-  wipe() {
-    this.claimed = {};            // sector -> bot
-    this.explored = new Set();
-    this.exploredBy = {};         // sector -> bot
-    this.unreachable = new Set();
-    this.unhealthy = new Set();
-    this.healthSeq = {};          // bot -> seq
-    this.detections = [];
-    this.phase = "exploring";
-  }
-  applyRaw(rec) {
-    if (!rec || !rec.op) return null;
-    if (rec.op === "reset") {
-      const e = rec.epoch || 0;
-      if (typeof e === "number" && e > this.epoch) { this.wipe(); this.epoch = e; }
-      return { accepted: true };
-    }
-    if ((rec.epoch || 0) !== this.epoch) return { accepted: false, reason: "stale epoch" };
-    return this.applyRecord(rec);
-  }
-  applyRecord(rec) {
-    const { op, bot, sector } = rec;
-    let accepted = false;
-    switch (op) {
-      case "claim": {
-        accepted = this.phase === "exploring" && bot != null && !this.unhealthy.has(bot)
-          && this.sectorIds.includes(sector) && !this.explored.has(sector)
-          && !this.unreachable.has(sector) && !(sector in this.claimed)
-          && !Object.values(this.claimed).includes(bot);
-        if (accepted) this.claimed[sector] = bot;
-        break;
-      }
-      case "explored":
-        accepted = this.claimed[sector] === bot;
-        if (accepted) { this.explored.add(sector); this.exploredBy[sector] = bot; delete this.claimed[sector]; }
-        break;
-      case "abandon":
-        accepted = this.claimed[sector] === bot;
-        if (accepted) delete this.claimed[sector];
-        break;
-      case "unreachable":
-        accepted = this.claimed[sector] === bot;
-        if (accepted) { this.unreachable.add(sector); delete this.claimed[sector]; }
-        break;
-      case "health": {
-        const seq = rec.seq;
-        if (bot == null || typeof seq !== "number") break;
-        accepted = seq > (this.healthSeq[bot] ?? -1);
-        if (accepted) {
-          this.healthSeq[bot] = seq;
-          if (rec.ok) this.unhealthy.delete(bot); else this._markUnhealthy(bot);
-        }
-        break;
-      }
-      case "suspect": {
-        const victim = rec.victim, seen = rec.seen_seq;
-        if (victim == null) break;
-        accepted = (this.healthSeq[victim] ?? -1) === seen;
-        if (accepted) this._markUnhealthy(victim);
-        break;
-      }
-      case "detection": {
-        const seq = rec.seq;
-        if (bot == null || this.unhealthy.has(bot)) break;
-        accepted = !this.detections.some((d) => d.bot === bot && d.seq === seq);
-        if (accepted) this.detections.push({ bot, seq, label: rec.label, x: rec.x, y: rec.y });
-        break;
-      }
-      default: return { accepted: false, reason: "unknown op" };
-    }
-    this._recomputePhase();
-    return { accepted };
-  }
-  _markUnhealthy(bot) {
-    this.unhealthy.add(bot);
-    for (const s of Object.keys(this.claimed)) if (this.claimed[s] === bot) delete this.claimed[s];
-  }
-  _recomputePhase() {
-    const remaining = this.sectorIds.filter((s) => !this.explored.has(s) && !this.unreachable.has(s));
-    this.phase = remaining.length === 0 ? "done" : "exploring";
-  }
-}
+// ArenaFold itself now lives in arena_fold.js (loaded above via <script src>)
+// so arena_fold.test.js can exercise the exact same code under Node.
 let fold = new ArenaFold(grid.ids);
 
 // ---- transient highlights for events that don't leave persistent sector state ----
@@ -449,7 +364,14 @@ function render() {
     if (unreachable.has(sid)) {
       fill = "#3a0a0a"; stroke = "#7a1414";
     } else if (explored.has(sid)) {
-      const bot = fold.exploredBy[sid];
+      // Prefer this bot's own live-published attribution (added alongside
+      // the consensus panel) over the shared client-side fold — same
+      // reasoning as the panel: an independent per-bot reading is a
+      // stronger check than one decode reused everywhere. Fold stays as
+      // the fallback for a joined-too-late gap or an older coordinator
+      // that doesn't publish explored_by yet.
+      const live = snap && snap.explored_by ? snap.explored_by[sid] : null;
+      const bot = live != null ? live : fold.exploredBy[sid];
       if (bot != null) {
         fill = hexAlpha(botColor(bot), 0.85); stroke = botColor(bot); label = "B" + bot;
       } else {
@@ -479,8 +401,14 @@ function render() {
     ctx.fillStyle = "#9099ab"; ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "left";
     ctx.fillText(sid, x0 + 4, y0 + 12);
     if (label) {
-      ctx.fillStyle = "#111"; ctx.font = "bold 12px ui-monospace, monospace"; ctx.textAlign = "center";
-      ctx.fillText(label, sx, sy + 4);
+      // Bottom-right corner, not the centroid: a bot marker is drawn on top
+      // of this in a later pass, centered on the bot's actual world position
+      // — which is very often the centroid of the sector it just finished,
+      // so a centered label gets its leading character(s) covered right when
+      // it matters most (caught in a live check: "explored·B4" rendered as
+      // just "4" because bot 4 was still parked on S07's centroid).
+      ctx.fillStyle = "#111"; ctx.font = "bold 12px ui-monospace, monospace"; ctx.textAlign = "right";
+      ctx.fillText(label, x0 + w - 4, y0 + h - 6);
     }
   }
 
@@ -546,20 +474,38 @@ setInterval(renderBotCards, 300);
 // ---- consensus state matrices: what each bot's own mission_state currently
 // says about sector ownership and peer health, side by side. Every peer folds
 // the same ordered /vertex/event stream, so these columns should always
-// agree once each bot has published at least once after an event lands —
-// a lingering mismatch is a real divergence, not just staleness, and is
-// flagged with the `disagree` outline rather than silently averaged away. ----
-function renderConsensusMatrix() {
-  const sHead = document.getElementById("sectorMatrixHead");
-  sHead.innerHTML = "";
-  const sectorHeadCell = document.createElement("th");
-  sectorHeadCell.className = "rowHead"; sectorHeadCell.textContent = "Sector";
-  sHead.appendChild(sectorHeadCell);
+// agree — but each bot publishes and arrives over its own WebSocket path with
+// independent jitter, so a mismatch seen on a SINGLE render tick is at least
+// as likely to be ordinary publish-timing skew as a real divergence. Only a
+// mismatch that persists across DISAGREE_GRACE_MS is treated as real and
+// flagged; see markDisagreements. ----
+const DISAGREE_GRACE_MS = 900;
+const disagreeSince = {}; // row key -> ms timestamp the mismatch was first seen
+
+function buildBotHeaderRow(headEl, label) {
+  headEl.innerHTML = "";
+  const rowHead = document.createElement("th");
+  rowHead.className = "rowHead"; rowHead.textContent = label;
+  headEl.appendChild(rowHead);
   for (let i = 0; i < CONFIG.numBots; i++) {
     const th = document.createElement("th");
-    th.textContent = "Bot " + i; th.style.color = botColor(i);
-    sHead.appendChild(th);
+    th.textContent = "B" + i; th.style.color = botColor(i);
+    headEl.appendChild(th);
   }
+}
+
+function markDisagreements(tr, seen, rowKey) {
+  if (new Set(seen).size > 1) {
+    const since = disagreeSince[rowKey] || (disagreeSince[rowKey] = Date.now());
+    if (Date.now() - since < DISAGREE_GRACE_MS) return;
+    for (let i = 1; i < tr.children.length; i++) tr.children[i].classList.add("disagree");
+  } else {
+    delete disagreeSince[rowKey];
+  }
+}
+
+function renderConsensusMatrix() {
+  buildBotHeaderRow(document.getElementById("sectorMatrixHead"), "Sector");
 
   const sBody = document.getElementById("sectorMatrixBody");
   sBody.innerHTML = "";
@@ -575,18 +521,22 @@ function renderConsensusMatrix() {
       const td = document.createElement("td");
       let text = "-", color = "var(--dim)";
       if (m) {
-        if ((m.explored || []).includes(sid)) {
+        // mission_state is an unauthenticated ROS topic (same threat model
+        // as pushFeed/renderBotCards elsewhere in this file) — a malformed
+        // or adversarial publisher sending a non-array/non-object field here
+        // must not throw and freeze this render loop every tick.
+        if (Array.isArray(m.explored) && m.explored.includes(sid)) {
           // explored_by is this bot's own reported attribution (added
           // alongside this panel) — not the shared fold, so a genuine
           // per-bot disagreement about who explored a sector actually
           // shows up in the `seen` comparison below instead of always
           // matching itself.
-          const by = m.explored_by ? m.explored_by[sid] : null;
+          const by = m.explored_by && typeof m.explored_by === "object" ? m.explored_by[sid] : null;
           text = by != null ? "explored·B" + by : "explored";
           color = by != null ? botColor(by) : "#4a6a55";
-        } else if ((m.unreachable || []).includes(sid)) {
+        } else if (Array.isArray(m.unreachable) && m.unreachable.includes(sid)) {
           text = "unreachable"; color = "#e5484d";
-        } else if (m.claimed && sid in m.claimed) {
+        } else if (m.claimed && typeof m.claimed === "object" && sid in m.claimed) {
           const holder = m.claimed[sid];
           text = "claimed·B" + holder; color = botColor(holder);
         }
@@ -595,22 +545,11 @@ function renderConsensusMatrix() {
       td.textContent = text; td.style.color = color;
       tr.appendChild(td);
     }
-    if (new Set(seen).size > 1) {
-      for (let i = 1; i < tr.children.length; i++) tr.children[i].classList.add("disagree");
-    }
+    markDisagreements(tr, seen, "sector:" + sid);
     sBody.appendChild(tr);
   }
 
-  const hHead = document.getElementById("healthMatrixHead");
-  hHead.innerHTML = "";
-  const healthHeadCell = document.createElement("th");
-  healthHeadCell.className = "rowHead"; healthHeadCell.textContent = "subject \\ observer";
-  hHead.appendChild(healthHeadCell);
-  for (let i = 0; i < CONFIG.numBots; i++) {
-    const th = document.createElement("th");
-    th.textContent = "B" + i; th.style.color = botColor(i);
-    hHead.appendChild(th);
-  }
+  buildBotHeaderRow(document.getElementById("healthMatrixHead"), "bot \\ as reported by");
 
   const hBody = document.getElementById("healthMatrixBody");
   hBody.innerHTML = "";
@@ -625,8 +564,8 @@ function renderConsensusMatrix() {
     for (let observer = 0; observer < CONFIG.numBots; observer++) {
       const m = botMission[observer];
       const td = document.createElement("td");
-      if (m) {
-        const unhealthy = (m.unhealthy || []).includes(subject);
+      if (m && Array.isArray(m.unhealthy)) {
+        const unhealthy = m.unhealthy.includes(subject);
         td.textContent = unhealthy ? "NOT OK" : "OK";
         td.style.color = unhealthy ? "#e5484d" : "#35c463";
         seen.push(unhealthy);
@@ -635,9 +574,7 @@ function renderConsensusMatrix() {
       }
       tr.appendChild(td);
     }
-    if (new Set(seen).size > 1) {
-      for (let i = 1; i < tr.children.length; i++) tr.children[i].classList.add("disagree");
-    }
+    markDisagreements(tr, seen, "health:" + subject);
     hBody.appendChild(tr);
   }
 }
@@ -693,6 +630,7 @@ document.getElementById("connectBtn").addEventListener("click", () => {
   feedEl.innerHTML = "";
   for (const k of Object.keys(botPose)) delete botPose[k];
   for (const k of Object.keys(botMission)) delete botMission[k];
+  for (const k of Object.keys(disagreeSince)) delete disagreeSince[k];
 
   const url = document.getElementById("url").value.trim();
   bridge.disconnect();
