@@ -26,6 +26,7 @@ def feed(fleet, log):
 
 def snap(fsm):
     return (tuple(sorted(fsm.claimed.items())), tuple(sorted(fsm.explored)),
+            tuple(sorted(fsm.explored_by.items())),
             tuple(sorted(fsm.unreachable)), tuple(sorted(fsm.unhealthy)),
             tuple((d["bot"], d["seq"], d["label"]) for d in fsm.detections),
             fsm.phase)
@@ -82,6 +83,7 @@ def test_explored_requires_holder():
     assert fsm.explored == set()
     fsm.apply(R("explored", 1, "S00"))                # the holder
     assert fsm.explored == {"S00"} and fsm.claimed == {}
+    assert fsm.explored_by == {"S00": 1}
     fsm.apply(R("claim", 2, "S00"))                   # explored: never re-claimed
     assert fsm.claimed == {}
     print("ok  explored_requires_holder")
@@ -209,6 +211,7 @@ def test_reset_epoch():
     fsm.apply(R("health", 4, seq=3, ok=False))
     fsm.apply({"op": "reset", "epoch": 1})
     assert fsm.epoch == 1 and fsm.explored == set() and fsm.unhealthy == set()
+    assert fsm.explored_by == {}
     fsm.apply(R("claim", 0, "S00", epoch=0))          # stale epoch -> ignored
     assert fsm.claimed == {}
     fsm.apply(R("claim", 0, "S00", epoch=1))

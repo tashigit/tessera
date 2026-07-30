@@ -576,7 +576,12 @@ function renderConsensusMatrix() {
       let text = "-", color = "var(--dim)";
       if (m) {
         if ((m.explored || []).includes(sid)) {
-          const by = fold.exploredBy[sid];
+          // explored_by is this bot's own reported attribution (added
+          // alongside this panel) — not the shared fold, so a genuine
+          // per-bot disagreement about who explored a sector actually
+          // shows up in the `seen` comparison below instead of always
+          // matching itself.
+          const by = m.explored_by ? m.explored_by[sid] : null;
           text = by != null ? "explored·B" + by : "explored";
           color = by != null ? botColor(by) : "#4a6a55";
         } else if ((m.unreachable || []).includes(sid)) {

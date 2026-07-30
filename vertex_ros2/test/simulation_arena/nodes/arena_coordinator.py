@@ -460,6 +460,7 @@ class ArenaCoordinator(VertexAgent):
             "epoch": self.state.epoch,
             "claimed": dict(sorted(self.state.claimed.items())),
             "explored": sorted(self.state.explored),
+            "explored_by": dict(sorted(self.state.explored_by.items())),
             "unreachable": sorted(self.state.unreachable),
             "unhealthy": sorted(self.state.unhealthy),
             "detections": [[d["bot"], d["seq"], d["label"]]
