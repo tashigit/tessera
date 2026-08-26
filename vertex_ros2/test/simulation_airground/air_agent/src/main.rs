@@ -7,11 +7,27 @@
 //! record schema. That is the claim simulation 3 exists to demonstrate, and
 //! keeping this binary ROS-free is what makes it checkable.
 //!
-//! The `!Send` FFI handles (`Engine`, `Context`, `Socket`) mean the engine
-//! cannot move between threads, so everything runs on a current-thread runtime
-//! in one `select!` loop rather than spawned tasks. This mirrors what
-//! `vertex_core` does with its dedicated engine thread, minus the channel
-//! bridge, because here there is nothing to bridge to.
+//! ## Why this is two tasks and not one `select!`
+//!
+//! `recv_message()` is **not cancellation-safe**: its future registers a
+//! pointer to itself with the C library on first poll, so dropping it
+//! mid-flight, which is exactly what `select!` does to a losing branch, leaves
+//! the library writing into freed memory. It does not fail cleanly either; it
+//! surfaces later as heap corruption (`malloc(): unsorted double linked list
+//! corrupted`, SIGABRT) far from the cause. Tessera's own README records this
+//! and `vertex_core` is built around it.
+//!
+//! So this follows `vertex_core`'s shape. The handles are `!Send`, so a
+//! current-thread runtime and a `LocalSet` with two cooperative tasks over an
+//! `Rc<Engine>`:
+//!
+//!   * a **recv loop** that awaits `recv_message()` in a plain loop and is
+//!     never cancelled, folding each event into the shared state;
+//!   * a **control loop** that `select!`s only over cancellation-safe futures
+//!     (a timer, a TCP accept, a line read) and proposes transactions.
+//!
+//! `send_transaction` is a plain call rather than a future, so proposing from
+//! the control loop needs no channel back.
 //!
 //! Usage:
 //!   air_agent --id drone_0 --bind 127.0.0.1:47633 \
@@ -25,8 +41,10 @@ mod fold;
 mod link;
 mod mission;
 
+use std::cell::RefCell;
 use std::fs::{File, OpenOptions};
 use std::io::Write as _;
+use std::rc::Rc;
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -149,15 +167,54 @@ impl Journal {
     }
 }
 
-fn submit(engine: &Engine, journal: &mut Journal, rec: &Value) {
+fn submit(engine: &Engine, journal: &Rc<RefCell<Journal>>, rec: &Value) {
     // serde_json's default Map is a BTreeMap, so this is sorted-key compact
     // JSON: byte-identical to vertex_fleet.state.encode on the Python side.
     let bytes = rec.to_string().into_bytes();
     let mut tx = Transaction::allocate(bytes.len());
     tx.copy_from_slice(&bytes);
     match engine.send_transaction(tx) {
-        Ok(()) => journal.line("TX", &rec.to_string()),
+        Ok(()) => journal.borrow_mut().line("TX", &rec.to_string()),
         Err(e) => eprintln!("air_agent: send_transaction failed: {e:?}"),
+    }
+}
+
+/// The recv loop. Awaits `recv_message()` in a plain loop and is never
+/// cancelled: see the note at the top of this file for why that matters.
+/// It is the only writer to `state`, which mirrors the rule the ground tier
+/// gets from `VertexAgent`, that shared state mutates in exactly one place.
+async fn recv_loop(
+    me: String,
+    engine: Rc<Engine>,
+    state: Rc<RefCell<AirGroundState>>,
+    journal: Rc<RefCell<Journal>>,
+) {
+    loop {
+        match engine.recv_message().await {
+            Ok(Some(Message::Event(ev))) => {
+                let mut st = state.borrow_mut();
+                let mut j = journal.borrow_mut();
+                j.line(
+                    "EVENT",
+                    &format!("{} txs={}", hex32(ev.hash()), ev.transaction_count()),
+                );
+                for payload in ev.transactions() {
+                    let Ok(text) = std::str::from_utf8(payload) else { continue };
+                    let Ok(rec) = serde_json::from_str::<Value>(text) else { continue };
+                    st.apply(&rec);
+                }
+                j.line("STATE", &st.snapshot().to_string());
+            }
+            Ok(Some(Message::SyncPoint(_))) => {}
+            Ok(None) => {
+                eprintln!("[{me}] event stream closed");
+                return;
+            }
+            Err(e) => {
+                eprintln!("[{me}] recv_message: {e:?}");
+                return;
+            }
+        }
     }
 }
 
@@ -179,8 +236,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (sectors, centers) = make_sectors(NX, NY, MIN_X, MIN_Y, CELL_W, CELL_H);
     let (blocks, block_cells) = make_blocks(NX, NY, BLOCK_W, BLOCK_H);
-    let mut state = AirGroundState::new(sectors, blocks, block_cells.clone());
-    let mut journal = Journal::open(args.log.as_deref());
+    let state = Rc::new(RefCell::new(AirGroundState::new(
+        sectors,
+        blocks,
+        block_cells.clone(),
+    )));
+    let journal = Rc::new(RefCell::new(Journal::open(args.log.as_deref())));
 
     // --- join the committee -------------------------------------------------
     let mut peers = Peers::with_capacity(args.peers.len() + 1)?;
@@ -195,7 +256,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Match the launch file's vertex_node setting so every peer in the mesh
     // gossips at the same cadence.
     options.set_heartbeat_us(50_000);
-    let engine = Engine::start(&context, socket, options, &args.key, peers, false)?;
+    let engine = Rc::new(Engine::start(
+        &context, socket, options, &args.key, peers, false,
+    )?);
     eprintln!(
         "[{me}] joined the committee on {} with {} peers, conduct {:?}",
         args.bind,
@@ -207,14 +270,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The agent takes part in consensus from the moment it starts, beaconing
     // not-ok until telemetry arrives, exactly as the ground coordinators do
     // before their robots connect. Blocking here instead would make a drone
-    // whose controller has not started a silent committee member that never
-    // even pumps recv_message, which with n = 4 is a fault the fleet should
-    // not have to absorb for a merely-late Webots.
+    // whose controller has not started a silent committee member.
     let listener = Link::listen(&args.link).await?;
-    let mut wire: Option<Link> = None;
     eprintln!("[{me}] listening for its Webots controller on {}", args.link);
 
-    // --- state the agent owns locally, never shared except as records -------
+    // Two cooperative tasks over the !Send engine. The recv loop is never
+    // cancelled; the control loop selects only over cancellation-safe futures.
+    let local = tokio::task::LocalSet::new();
+    local.spawn_local(recv_loop(
+        me.clone(),
+        Rc::clone(&engine),
+        Rc::clone(&state),
+        Rc::clone(&journal),
+    ));
+    local
+        .run_until(control_loop(
+            me,
+            args.conduct,
+            engine,
+            state,
+            journal,
+            listener,
+            centers,
+            block_cells,
+        ))
+        .await;
+
+    Ok(())
+}
+
+/// The control loop: beacon, decide, steer. Every future it selects over is
+/// cancellation-safe (a timer tick, a TCP accept, a buffered line read), which
+/// is the property `recv_message()` lacks and the reason it lives elsewhere.
+#[allow(clippy::too_many_arguments)]
+async fn control_loop(
+    me: String,
+    conduct: Conduct,
+    engine: Rc<Engine>,
+    state: Rc<RefCell<AirGroundState>>,
+    journal: Rc<RefCell<Journal>>,
+    listener: tokio::net::TcpListener,
+    centers: std::collections::BTreeMap<String, (f64, f64)>,
+    block_cells: std::collections::BTreeMap<String, Vec<String>>,
+) {
+    let mut wire: Option<Link> = None;
     let mut latest: Option<Telemetry> = None;
     let mut plan: Option<Plan> = None;
     let mut beacon_seq: i64 = 0;
@@ -224,25 +323,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         tokio::select! {
-            // ---- consensus: the only thing that mutates shared state ----
-            msg = engine.recv_message() => {
-                match msg {
-                    Ok(Some(Message::Event(ev))) => {
-                        journal.line("EVENT", &format!("{} txs={}",
-                            hex32(ev.hash()), ev.transaction_count()));
-                        for payload in ev.transactions() {
-                            let Ok(text) = std::str::from_utf8(payload) else { continue };
-                            let Ok(rec) = serde_json::from_str::<Value>(text) else { continue };
-                            state.apply(&rec);
-                        }
-                        journal.line("STATE", &state.snapshot().to_string());
-                    }
-                    Ok(Some(Message::SyncPoint(_))) => {}
-                    Ok(None) => { eprintln!("[{me}] event stream closed"); break }
-                    Err(e) => { eprintln!("[{me}] recv_message: {e:?}"); break }
-                }
-            }
-
             // ---- the airframe connecting (or reconnecting after a reload) ----
             accepted = listener.accept(), if wire.is_none() => {
                 match accepted {
@@ -281,11 +361,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // ---- tick: beacon, then decide what to propose ----
             _ = ticker.tick() => {
                 ticks += 1;
+                let epoch = state.borrow().epoch;
 
                 if ticks % BEACON_EVERY == 0 {
                     beacon_seq += 1;
-                    let rec = health_record(&me, beacon_seq, latest.as_ref(), state.epoch);
-                    submit(&engine, &mut journal, &rec);
+                    let rec = health_record(&me, beacon_seq, latest.as_ref(), epoch);
+                    submit(&engine, &journal, &rec);
                 }
 
                 let Some(t) = latest else { continue };
@@ -296,28 +377,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !grounded_locally && t.battery < RTB_BATTERY {
                     grounded_locally = true;
                     plan = None;
-                    submit(&engine, &mut journal, &json!({
-                        "op": "rtb", "agent": me, "epoch": state.epoch}));
-                    journal.line("DECIDE", "rtb: battery low, releasing block");
+                    submit(&engine, &journal, &json!({
+                        "op": "rtb", "agent": me, "epoch": epoch}));
+                    journal.borrow_mut().line("DECIDE", "rtb: battery low, releasing block");
                     command(&mut wire, Command::Land).await;
                     continue;
                 }
                 if grounded_locally {
                     if t.battery >= READY_BATTERY {
                         grounded_locally = false;
-                        submit(&engine, &mut journal, &json!({
-                            "op": "ready", "agent": me, "epoch": state.epoch}));
-                        journal.line("DECIDE", "ready: recharged, resuming survey");
+                        submit(&engine, &journal, &json!({
+                            "op": "ready", "agent": me, "epoch": epoch}));
+                        journal.borrow_mut()
+                            .line("DECIDE", "ready: recharged, resuming survey");
                     }
                     continue;
                 }
 
                 // Consensus decides whether we still hold the block: if a
                 // health blip or an rtb released it, the local plan is void.
-                let held = state.my_block(&me);
+                let held = state.borrow().my_block(&me);
                 if held.as_deref() != plan.as_ref().map(|p| p.block.as_str()) {
                     plan = held.as_ref().map(|b| {
-                        journal.line("DECIDE", &format!("planning survey of {b}"));
+                        journal.borrow_mut()
+                            .line("DECIDE", &format!("planning survey of {b}"));
                         Plan::new(b, block_cells.get(b).map_or(&[], |v| v), &centers)
                     });
                 }
@@ -331,20 +414,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     // Pass complete: report what the ranger saw, then the survey.
                     Some(p) => {
-                        for rec in survey_records(&me, p, &block_cells, args.conduct, state.epoch) {
-                            submit(&engine, &mut journal, &rec);
+                        for rec in survey_records(&me, p, &block_cells, conduct, epoch) {
+                            submit(&engine, &journal, &rec);
                         }
-                        journal.line("DECIDE", &format!(
+                        journal.borrow_mut().line("DECIDE", &format!(
                             "surveyed {}, {} sighting(s)", p.block, p.sighted.len()));
                         plan = None;
                         command(&mut wire, Command::Hold).await;
                     }
                     // Idle: try to take work.
                     None => {
-                        match nearest_claimable_block(&state, &t, &block_cells, &centers) {
-                            Some(b) => submit(&engine, &mut journal, &json!({
+                        let pick = nearest_claimable_block(
+                            &state.borrow(), &t, &block_cells, &centers);
+                        match pick {
+                            Some(b) => submit(&engine, &journal, &json!({
                                 "op": "survey_claim", "agent": me,
-                                "block": b, "epoch": state.epoch})),
+                                "block": b, "epoch": epoch})),
                             None => { command(&mut wire, Command::Hold).await; }
                         }
                     }
@@ -352,8 +437,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
-    Ok(())
 }
 
 fn hex32(h: &[u8; 32]) -> String {

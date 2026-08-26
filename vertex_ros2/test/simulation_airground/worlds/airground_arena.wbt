@@ -17,11 +17,14 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/SandyGround.proto"
 
 WorldInfo {
-  # The Mavic 2 PRO's published control constants assume these. The arena
-  # world left WorldInfo empty, which is fine for Pioneers but leaves the
-  # drones unflyable: at the default 32 ms step with no damping the attitude
-  # loop oscillates and they tumble on takeoff.
-  basicTimeStep 8
+  # Damping matters for the drones: the Mavic control law is tuned with it
+  # and the airframe oscillates without it. The timestep is the arena's 32 ms
+  # and must stay there. Webots' Mavic sample suggests 8, but measured on this
+  # world that is unusable: physics goes from 32 ms/step at a 32 ms timestep
+  # to ~595 ms/step at 8 or 16, taking real time from 0.90x to 0.014x. The
+  # cost is the arena's sixteen procedural Pit meshes, whose contact solving
+  # blows up at the finer step. A watchable world beats a textbook timestep.
+  basicTimeStep 32
   defaultDamping Damping {
     linear 0.5
     angular 0.5
@@ -555,7 +558,7 @@ Rock {
 }
 
 DEF DRONE_0 Mavic2Pro {
-  translation -20 -15 0.1
+  translation -24 -24 0.3
   rotation 0 0 1 0
   name "drone_0"
   controller "mavic_surveyor"
@@ -571,8 +574,7 @@ DEF DRONE_0 Mavic2Pro {
       translation 0 0 -0.05
       rotation 0 1 0 1.5708          # point straight down (-Z)
       type "laser"
-      numberOfRays 3
-      aperture 0.05
+      numberOfRays 1
       lookupTable [
         0    0    0
         40   40   0.002
@@ -581,7 +583,7 @@ DEF DRONE_0 Mavic2Pro {
   ]
 }
 DEF DRONE_1 Mavic2Pro {
-  translation 16 9 0.1
+  translation 24 24 0.3
   rotation 0 0 1 0
   name "drone_1"
   controller "mavic_surveyor"
@@ -597,8 +599,7 @@ DEF DRONE_1 Mavic2Pro {
       translation 0 0 -0.05
       rotation 0 1 0 1.5708          # point straight down (-Z)
       type "laser"
-      numberOfRays 3
-      aperture 0.05
+      numberOfRays 1
       lookupTable [
         0    0    0
         40   40   0.002

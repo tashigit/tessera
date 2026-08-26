@@ -24,8 +24,15 @@ geometric signal rather than a vision problem, so it stays deterministic and
 the assertions stay crisp.
 
 Attitude control is the published Mavic 2 PRO law from Webots' own
-`mavic2pro_patrol` sample, constants and all. It needs `basicTimeStep 8` and
-linear/angular damping of 0.5, which the world sets.
+`mavic2pro_patrol` sample, constants unchanged. The POSITION loop on top is
+not from the sample, which is a patrol demo rather than a position controller
+and flies away when driven from a survey plan; see the note above `KP_POS`.
+
+That sample also asks for `basicTimeStep 8`, which this world deliberately
+does not use: measured here, a finer step takes real time from 0.90x to
+0.014x because contact solving against the arena's sixteen procedural pit
+meshes explodes below 32 ms. The world runs at 32 with damping 0.5 instead.
+See the note in `worlds/airground_arena.wbt`.
 """
 
 import json
@@ -47,15 +54,30 @@ AGENT_HOST = os.environ.get("AIR_AGENT_HOST", "127.0.0.1")
 SURVEY_ALT = 12.0       # metres; clears the arena's BigSassafras canopy
 TARGET_PRECISION = 2.0  # metres, horizontal, before a waypoint counts reached
 TELEMETRY_PERIOD = 0.1  # seconds between telemetry frames
+STATUS_PERIOD = 5.0     # seconds between console status lines
 
-# --- Mavic 2 PRO control constants (Webots' mavic2pro sample) ---
+# --- attitude loop: Webots' mavic2pro sample, unchanged ---
 K_VERTICAL_THRUST = 68.5   # with this thrust the drone lifts
 K_VERTICAL_OFFSET = 0.6    # vertical offset where it stabilises
 K_VERTICAL_P = 3.0
 K_ROLL_P = 50.0
 K_PITCH_P = 30.0
-MAX_YAW_DISTURBANCE = 0.4
-MAX_PITCH_DISTURBANCE = -1.0
+
+# --- position loop: not from the sample ---
+# The sample is a patrol demo, not a position controller: it pitches forward
+# whenever it is roughly aligned with the next waypoint, with no position or
+# velocity feedback, and never has to settle anywhere. Driven from a survey
+# plan it simply flies away, which it did here, to 375 m outside the arena.
+# What follows is a normal cascaded loop: position error and velocity in the
+# body frame produce an attitude setpoint, which the sample's attitude loop
+# then tracks.
+KP_POS = 0.08              # tilt per metre of position error
+KD_POS = 0.30              # tilt per m/s of closing speed (the brake)
+MAX_TILT = 0.12            # rad, hard cap on commanded tilt
+SP_SLEW = 0.12             # rad/s: never STEP the attitude setpoint (see fly)
+K_YAW_P, K_YAW_D = 1.2, 0.3
+YAW_AUTH = 0.25            # rad/s of yaw authority
+GATE_FROM, GATE_SPAN = 6.0, 4.0   # ramp the position loop in with altitude
 
 # --- battery model ---
 # Webots' battery field is not wired up here; a simple linear model is enough
@@ -118,7 +140,9 @@ class Surveyor(Robot):
     def __init__(self):
         Robot.__init__(self)
         self.dt = int(self.getBasicTimeStep())
-        self.name = self.getName()
+        # `name` is a read-only property on Webots' Robot, so keep ours
+        # under a different attribute.
+        self.robot_name = self.getName()
 
         self.imu = self.getDevice("inertial unit")
         self.gps = self.getDevice("gps")
@@ -133,7 +157,7 @@ class Surveyor(Robot):
         if self.ranger is not None:
             self.ranger.enable(self.dt)
         else:
-            print(f"[{self.name}] WARNING: no ground_ranger device; pits will "
+            print(f"[{self.robot_name}] WARNING: no ground_ranger device; pits will "
                   f"be invisible from the air", flush=True)
 
         self.camera = self.getDevice("camera")
@@ -150,16 +174,20 @@ class Surveyor(Robot):
             m.setPosition(float("inf"))
             m.setVelocity(1.0)
 
+        self.yaw0 = None            # heading held for the whole flight
+        self.pitch_sp = 0.0          # rate-limited attitude setpoints
+        self.roll_sp = 0.0
         self.goal = None            # (x, y, z) or None
         self.landing = False
         self.battery = 1.0
         self.last_tx = 0.0
+        self.last_status = 0.0
         self.wire = None
 
     # ---- link ----
     def connect(self):
         port = int(os.environ.get(
-            "AIR_AGENT_PORT", DEFAULT_PORTS.get(self.name, 48633)))
+            "AIR_AGENT_PORT", DEFAULT_PORTS.get(self.robot_name, 48633)))
         # The agent binds its listener as it starts; Webots may well be up
         # first, so retry across steps rather than failing the controller.
         while self.step(self.dt) != -1:
@@ -169,7 +197,7 @@ class Surveyor(Robot):
                 continue
             s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.wire = LineSocket(s)
-            print(f"[{self.name}] linked to air_agent at {AGENT_HOST}:{port}",
+            print(f"[{self.robot_name}] linked to air_agent at {AGENT_HOST}:{port}",
                   flush=True)
             return True
         return False
@@ -191,63 +219,75 @@ class Surveyor(Robot):
                 self.goal, self.landing = None, True
 
     # ---- flight ----
-    def fly(self, pose, gyro_xy):
-        """One step of the Mavic attitude/position law."""
+    def fly(self, pose, rates):
+        """One step of the cascaded position/attitude loop.
+
+        Position error and velocity are resolved into the body frame and become
+        a tilt setpoint; the sample's attitude loop tracks that setpoint. Three
+        details matter and each one cost a crash to find:
+
+        * the setpoint is RATE-LIMITED. Stepping it, which every waypoint
+          change does, excites an oscillation the attitude loop cannot damp,
+          and the airframe inverts within a second;
+        * the position loop RAMPS IN with altitude, so the climb-out does not
+          build lateral speed before the loop has authority;
+        * heading is HELD, not slewed to face each waypoint. The ranger and
+          camera look straight down so heading is irrelevant to a survey, and
+          yawing at each waypoint tumbled it.
+        """
         x, y, alt, roll, pitch, yaw = pose
-        roll_accel, pitch_accel = gyro_xy
+        roll_rate, pitch_rate, yaw_rate, vx, vy = rates
+
+        if self.yaw0 is None:
+            self.yaw0 = yaw
 
         if self.landing:
-            target_alt = 0.0
-            yaw_dist = pitch_dist = 0.0
-        elif self.goal is not None:
-            gx, gy, gz = self.goal
-            target_alt = gz
-            # Turn toward the waypoint, then pitch forward proportionally to
-            # how well lined up we are: the sample's non-proportional,
-            # decreasing function, which stops it running off on a bad heading.
-            bearing = math.atan2(gy - y, gx - x)
-            angle_left = (bearing - yaw + 2 * math.pi) % (2 * math.pi)
-            if angle_left > math.pi:
-                angle_left -= 2 * math.pi
-            yaw_dist = MAX_YAW_DISTURBANCE * angle_left / (2 * math.pi)
-            if math.hypot(gx - x, gy - y) < TARGET_PRECISION:
-                pitch_dist = 0.0        # arrived: stop pushing, hold station
-            else:
-                pitch_dist = clamp(math.log10(abs(angle_left) + 1e-9),
-                                   MAX_PITCH_DISTURBANCE, 0.1)
+            target_alt, want_p, want_r = 0.0, 0.0, 0.0
         else:
-            target_alt = SURVEY_ALT
-            yaw_dist = pitch_dist = 0.0
+            gx, gy, gz = self.goal if self.goal else (x, y, SURVEY_ALT)
+            target_alt = gz
+            ex, ey = gx - x, gy - y
+            cy, sy = math.cos(yaw), math.sin(yaw)
+            fwd, left = ex * cy + ey * sy, -ex * sy + ey * cy
+            v_fwd, v_left = vx * cy + vy * sy, -vx * sy + vy * cy
+            gate = clamp((alt - GATE_FROM) / GATE_SPAN, 0.0, 1.0)
+            want_p = clamp((KP_POS * fwd - KD_POS * v_fwd) * gate, -MAX_TILT, MAX_TILT)
+            want_r = clamp(-(KP_POS * left - KD_POS * v_left) * gate, -MAX_TILT, MAX_TILT)
 
-        roll_input = K_ROLL_P * clamp(roll, -1, 1) + roll_accel
-        pitch_input = K_PITCH_P * clamp(pitch, -1, 1) + pitch_accel + pitch_dist
-        yaw_input = yaw_dist
+        step = SP_SLEW * self.dt / 1000.0
+        self.pitch_sp += clamp(want_p - self.pitch_sp, -step, step)
+        self.roll_sp += clamp(want_r - self.roll_sp, -step, step)
+
+        heading_err = (self.yaw0 - yaw + math.pi) % (2 * math.pi) - math.pi
+        yaw_input = clamp(K_YAW_P * heading_err - K_YAW_D * yaw_rate,
+                          -YAW_AUTH, YAW_AUTH)
+
+        roll_input = K_ROLL_P * clamp(roll - self.roll_sp, -1, 1) + roll_rate
+        pitch_input = K_PITCH_P * clamp(pitch - self.pitch_sp, -1, 1) + pitch_rate
         d_alt = clamp(target_alt - alt + K_VERTICAL_OFFSET, -1, 1)
         vertical_input = K_VERTICAL_P * (d_alt ** 3.0)
 
         base = K_VERTICAL_THRUST + vertical_input
-        fl = base - yaw_input + pitch_input - roll_input
-        fr = base + yaw_input + pitch_input + roll_input
-        rl = base + yaw_input - pitch_input - roll_input
-        rr = base - yaw_input - pitch_input + roll_input
-        self.motors[0].setVelocity(fl)
-        self.motors[1].setVelocity(-fr)
-        self.motors[2].setVelocity(-rl)
-        self.motors[3].setVelocity(rr)
+        self.motors[0].setVelocity(base - yaw_input + pitch_input - roll_input)
+        self.motors[1].setVelocity(-(base + yaw_input + pitch_input + roll_input))
+        self.motors[2].setVelocity(-(base + yaw_input - pitch_input - roll_input))
+        self.motors[3].setVelocity(base - yaw_input - pitch_input + roll_input)
 
     def run(self):
         if not self.connect():
             return
         while self.step(self.dt) != -1:
             if self.wire.closed:
-                print(f"[{self.name}] air_agent closed the link", flush=True)
+                print(f"[{self.robot_name}] air_agent closed the link", flush=True)
                 return
             self.read_commands()
 
             roll, pitch, yaw = self.imu.getRollPitchYaw()
             x, y, alt = self.gps.getValues()
-            roll_accel, pitch_accel, _ = self.gyro.getValues()
-            self.fly((x, y, alt, roll, pitch, yaw), (roll_accel, pitch_accel))
+            roll_rate, pitch_rate, yaw_rate = self.gyro.getValues()
+            vx, vy, _ = self.gps.getSpeedVector()
+            self.fly((x, y, alt, roll, pitch, yaw),
+                     (roll_rate, pitch_rate, yaw_rate, vx, vy))
 
             now = self.getTime()
             step_s = self.dt / 1000.0
@@ -255,6 +295,18 @@ class Surveyor(Robot):
                 self.battery = min(1.0, self.battery + step_s / RECHARGE_SECONDS)
             else:
                 self.battery = max(0.0, self.battery - step_s / FLIGHT_SECONDS)
+
+            # A periodic line in the Webots console, so "is my drone actually
+            # flying?" is answerable from the GUI without reading journals.
+            if now - self.last_status >= STATUS_PERIOD:
+                self.last_status = now
+                where = ("landing" if self.landing else
+                         f"-> ({self.goal[0]:.0f}, {self.goal[1]:.0f})"
+                         if self.goal else "holding")
+                print(f"[{self.robot_name}] t={now:6.1f}s "
+                      f"pos=({x:6.1f},{y:6.1f}) alt={alt:5.1f}m "
+                      f"clear={self.ranger.getValue():5.1f}m "
+                      f"batt={self.battery:.0%} {where}", flush=True)
 
             if now - self.last_tx >= TELEMETRY_PERIOD:
                 self.last_tx = now
