@@ -161,6 +161,17 @@ fn submit(engine: &Engine, journal: &mut Journal, rec: &Value) {
     }
 }
 
+/// Send a command if the airframe is attached. Before its controller
+/// connects (or between a Webots reload) the drone still runs its consensus
+/// loop; it just has nothing to steer.
+async fn command(wire: &mut Option<Link>, cmd: Command) {
+    if let Some(w) = wire.as_mut() {
+        if let Err(e) = w.send(cmd).await {
+            eprintln!("air_agent: link send failed: {e}");
+        }
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args();
@@ -192,10 +203,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.conduct
     );
 
-    // --- wait for the airframe ---------------------------------------------
-    eprintln!("[{me}] waiting for its Webots controller on {}", args.link);
-    let mut wire = Link::accept(&args.link).await?;
-    eprintln!("[{me}] controller connected");
+    // --- listen for the airframe, but do not block on it --------------------
+    // The agent takes part in consensus from the moment it starts, beaconing
+    // not-ok until telemetry arrives, exactly as the ground coordinators do
+    // before their robots connect. Blocking here instead would make a drone
+    // whose controller has not started a silent committee member that never
+    // even pumps recv_message, which with n = 4 is a fault the fleet should
+    // not have to absorb for a merely-late Webots.
+    let listener = Link::listen(&args.link).await?;
+    let mut wire: Option<Link> = None;
+    eprintln!("[{me}] listening for its Webots controller on {}", args.link);
 
     // --- state the agent owns locally, never shared except as records -------
     let mut latest: Option<Telemetry> = None;
@@ -226,8 +243,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            // ---- the airframe connecting (or reconnecting after a reload) ----
+            accepted = listener.accept(), if wire.is_none() => {
+                match accepted {
+                    Ok((stream, _)) => {
+                        eprintln!("[{me}] controller connected");
+                        wire = Some(Link::wrap(stream));
+                    }
+                    Err(e) => eprintln!("[{me}] accept failed: {e}"),
+                }
+            }
+
             // ---- telemetry: local truth, feeds proposals ----
-            t = wire.recv() => {
+            t = async { wire.as_mut().unwrap().recv().await }, if wire.is_some() => {
                 match t {
                     Some(t) => {
                         latest = Some(t);
@@ -238,7 +266,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             p.advance(&t, cell.as_deref());
                         }
                     }
-                    None => { eprintln!("[{me}] controller disconnected"); break }
+                    None => {
+                        // Webots closed or reloaded. Drop the stale telemetry
+                        // so health goes not-ok and the fold releases our
+                        // block, then wait for the controller to come back.
+                        eprintln!("[{me}] controller disconnected, waiting for it to return");
+                        wire = None;
+                        latest = None;
+                        plan = None;
+                    }
                 }
             }
 
@@ -263,7 +299,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     submit(&engine, &mut journal, &json!({
                         "op": "rtb", "agent": me, "epoch": state.epoch}));
                     journal.line("DECIDE", "rtb: battery low, releasing block");
-                    let _ = wire.send(Command::Land).await;
+                    command(&mut wire, Command::Land).await;
                     continue;
                 }
                 if grounded_locally {
@@ -290,7 +326,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Holding a block and still flying it.
                     Some(p) if !p.finished() => {
                         if let Some((x, y)) = p.current() {
-                            let _ = wire.send(Command::Goto { x, y, z: SURVEY_ALT }).await;
+                            command(&mut wire, Command::Goto { x, y, z: SURVEY_ALT }).await;
                         }
                     }
                     // Pass complete: report what the ranger saw, then the survey.
@@ -301,7 +337,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         journal.line("DECIDE", &format!(
                             "surveyed {}, {} sighting(s)", p.block, p.sighted.len()));
                         plan = None;
-                        let _ = wire.send(Command::Hold).await;
+                        command(&mut wire, Command::Hold).await;
                     }
                     // Idle: try to take work.
                     None => {
@@ -309,7 +345,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Some(b) => submit(&engine, &mut journal, &json!({
                                 "op": "survey_claim", "agent": me,
                                 "block": b, "epoch": state.epoch})),
-                            None => { let _ = wire.send(Command::Hold).await; }
+                            None => { command(&mut wire, Command::Hold).await; }
                         }
                     }
                 }

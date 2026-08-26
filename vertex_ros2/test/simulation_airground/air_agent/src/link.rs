@@ -87,15 +87,14 @@ pub struct Link {
 }
 
 impl Link {
-    /// Wait for the controller to connect. One drone, one controller, so a
-    /// single accepted connection is the whole story.
-    pub async fn accept(bind: &str) -> io::Result<Self> {
-        let listener = TcpListener::bind(bind).await?;
-        let (stream, _peer) = listener.accept().await?;
-        Ok(Self::wrap(stream))
+    /// Start listening. The agent keeps the listener for the whole run rather
+    /// than accepting once and dropping it: a Webots world reload restarts the
+    /// controller, and the drone should pick it back up instead of dying.
+    pub async fn listen(bind: &str) -> io::Result<TcpListener> {
+        TcpListener::bind(bind).await
     }
 
-    fn wrap(stream: TcpStream) -> Self {
+    pub fn wrap(stream: TcpStream) -> Self {
         // Telemetry is small and latency matters more than packing, so send
         // each line immediately instead of waiting for Nagle.
         let _ = stream.set_nodelay(true);

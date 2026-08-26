@@ -95,6 +95,24 @@ gen_peers5() {
   fi
 }
 
+AIRGROUND="${TESSERA}/vertex_ros2/test/simulation_airground"
+
+gen_peers_airground() {
+  if [ ! -f "${AIRGROUND}/fixtures/peers_airground.json" ]; then
+    echo "==> generating simulation fixtures/peers_airground.json"
+    ( bash "${AIRGROUND}/fixtures/gen_peers_airground.sh" )
+  fi
+}
+
+# The drones are native Rust binaries, not colcon packages: they link
+# tashi-vertex directly and know nothing about ROS, so colcon never sees them
+# and they need their own cargo build. Built for the container's arch here,
+# which is also why a host-built binary is no use inside it.
+build_air_agent() {
+  echo "==> cargo build air_agent (drone-side Vertex agent, no ROS)"
+  ( cd "${AIRGROUND}/air_agent" && cargo build )
+}
+
 case "${1:-test}" in
   core)
     run_core
@@ -168,6 +186,18 @@ case "${1:-test}" in
     python3 "${TESSERA}/vertex_ros2/test/simulation_arena/nodes/test_arena_fsm.py"
     echo "==> launch_test: arena exploration (5x vertex_node + coordinator + mock_pioneer)"
     launch_test "${TESSERA}/vertex_ros2/test/simulation_arena/arena_exploration.launch_test.py"
+
+    # --- simulation 3: the mixed air/ground fleet ---
+    build_air_agent
+    gen_peers_airground
+    echo "==> airground_fsm unit tests (simulation 3, Python fold)"
+    python3 "${AIRGROUND}/nodes/test_airground_fsm.py"
+    echo "==> cargo test air_agent (Rust fold; replays the same conformance fixture)"
+    ( cd "${AIRGROUND}/air_agent" && cargo test )
+    echo "==> launch_test: air/ground survey-and-sweep (2x tessera bot + 2x Rust drone)"
+    launch_test "${AIRGROUND}/airground.launch_test.py"
+    echo "==> launch_test: the lying drone (corroboration under a Byzantine peer)"
+    launch_test "${AIRGROUND}/lying_drone.launch_test.py"
     ;;
   simarena)
     # Arena-exploration simulation (simulation 2), container side. Webots runs
