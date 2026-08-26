@@ -342,8 +342,12 @@ async fn control_loop(
                         // Sample the ground under the current waypoint and step
                         // the pass along if we have arrived.
                         if let Some(p) = plan.as_mut() {
+                            // Sample the ground on EVERY frame, then advance
+                            // the pass if we have arrived. Sampling only on
+                            // arrival misses craters; see Plan::observe.
                             let cell = sector_at(t.x, t.y, NX, NY, MIN_X, MIN_Y, CELL_W, CELL_H);
-                            p.advance(&t, cell.as_deref());
+                            p.observe(&t, cell.as_deref());
+                            p.advance(&t);
                         }
                     }
                     None => {

@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Air/Ground Survey-and-Sweep — Live Viewer</title>
+<style>
+  :root {
+    --bg: #10141c; --panel: #171c26; --border: #2a3242; --text: #d8dee9;
+    --dim: #7b8496; --accent: #4fc3f7; --ok: #35c463; --bad: #e5484d;
+    --warn: #e8a33d; --air: #b07cf0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 13px/1.4 -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+           background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 12px 0 0; font-weight: 600; }
+  header label, header .grp { color: var(--dim); font-size: 12px; }
+  header input { background: #0b0e14; border: 1px solid var(--border); color: var(--text);
+                 border-radius: 4px; padding: 3px 6px; font: 12px monospace; width: 58px; }
+  header input#url { width: 210px; }
+  header button { background: var(--accent); color: #05202b; border: none; border-radius: 4px;
+                  padding: 5px 12px; font-weight: 600; cursor: pointer; }
+  header button:hover { filter: brightness(1.1); }
+  #status { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  #status.disconnected { background: #3a1418; color: var(--bad); }
+  #status.connecting   { background: #3a3314; color: #e5c04d; }
+  #status.connected    { background: #123a20; color: var(--ok); }
+
+  main { display: flex; height: calc(100vh - 46px - 250px); }
+  #mapWrap { flex: 1; position: relative; min-width: 0; }
+  canvas { display: block; background: #0c0f16; }
+  #legend { position: absolute; top: 10px; left: 10px; background: rgba(10,13,20,0.88);
+            border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+            font-size: 11px; color: var(--dim); line-height: 1.65; }
+  #legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+                margin-right: 6px; vertical-align: middle; }
+  #legend hr { border: none; border-top: 1px solid var(--border); margin: 5px 0; }
+
+  #sidebar { width: 340px; flex-shrink: 0; border-left: 1px solid var(--border);
+             display: flex; flex-direction: column; background: var(--panel); }
+  .tierHead { padding: 8px 10px 4px; color: var(--dim); font-size: 11px;
+              text-transform: uppercase; letter-spacing: 0.04em; }
+  .agents { padding: 0 10px 8px; display: grid; gap: 6px; }
+  .card { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+          border-radius: 6px; border: 1px solid var(--border); background: #0f1420; }
+  .card .id { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+              display: flex; align-items: center; justify-content: center;
+              font-weight: 700; font-size: 10px; color: #05202b; }
+  .card.air .id { border-radius: 4px; }
+  .card .info { flex: 1; min-width: 0; }
+  .card .role { font-weight: 600; }
+  .card .sub { color: var(--dim); font-size: 11px; }
+  .card .health { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  #feedHead { padding: 8px 10px 4px; color: var(--dim); font-size: 11px;
+              text-transform: uppercase; letter-spacing: 0.04em;
+              border-top: 1px solid var(--border); }
+  #feed { flex: 1; overflow-y: auto; padding: 0 10px 10px;
+          font: 11.5px/1.5 ui-monospace, monospace; }
+  .ev { padding: 3px 6px; border-radius: 4px; margin-bottom: 2px; }
+  .ev .t { color: var(--dim); margin-right: 6px; }
+  .ev.rejected { opacity: 0.45; }
+  .ev.survey_claim { background: #1b1430; }
+  .ev.surveyed     { background: #221a3a; }
+  .ev.hazard       { background: #2f2410; }
+  .ev.corroborate  { background: #33260e; font-weight: 600; }
+  .ev.claim        { background: #10202c; }
+  .ev.explored     { background: #10241a; }
+  .ev.abandon      { background: #2c2410; }
+  .ev.rtb, .ev.ready { background: #101c2c; }
+  .ev.suspect      { background: #2c1414; }
+  .ev.health       { color: var(--dim); }
+  .ev.reset        { background: #24102c; font-weight: 700; }
+
+  #consensus { height: 250px; flex-shrink: 0; border-top: 1px solid var(--border);
+               background: var(--panel); display: flex; flex-direction: column; }
+  #consensusHead { padding: 6px 10px 0; color: var(--dim); font-size: 11px;
+                   text-transform: uppercase; letter-spacing: 0.04em; }
+  #consensusSub { padding: 0 10px 6px; color: var(--dim); font-size: 11px; max-width: 1100px; }
+  #consensusBody { flex: 1; display: flex; gap: 24px; overflow: auto; padding: 0 10px 10px; }
+  .matrixWrap { flex-shrink: 0; }
+  .matrixTitle { color: var(--dim); font-size: 11px; margin-bottom: 4px; }
+  .matrixTable { border-collapse: collapse; font: 11px ui-monospace, monospace; }
+  .matrixTable th, .matrixTable td { padding: 3px 8px; border: 1px solid var(--border);
+                                     text-align: center; white-space: nowrap; }
+  .matrixTable th { color: var(--dim); font-weight: 600; }
+  .matrixTable td.rowHead, .matrixTable th.rowHead { text-align: left; color: var(--dim); }
+  .matrixTable td.disagree { box-shadow: inset 0 0 0 2px var(--bad); }
+  .note { color: var(--dim); font-size: 11px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Air/Ground Survey-and-Sweep</h1>
+  <label>rosbridge <input id="url" value="ws://localhost:9090"></label>
+  <span class="grp">sectors <input id="gridNx" value="4">×<input id="gridNy" value="3"></span>
+  <span class="grp">origin <input id="gridMinX" value="-20">,<input id="gridMinY" value="-15"></span>
+  <span class="grp">cell <input id="cellW" value="10">×<input id="cellH" value="10"></span>
+  <span class="grp">block <input id="blockW" value="2">×<input id="blockH" value="1"></span>
+  <button id="connectBtn">Connect</button>
+  <span id="status" class="disconnected">disconnected</span>
+</header>
+
+<main>
+  <div id="mapWrap">
+    <canvas id="map"></canvas>
+    <div id="legend">
+      <div><strong style="color:var(--text)">Ground sectors</strong></div>
+      <div><span class="sw" style="background:#1a1f2b;border:1px solid #333"></span>unsurveyed — no bot may claim it</div>
+      <div><span class="sw" style="background:#f4f4f4;border:1px solid #ccc"></span>surveyed, free</div>
+      <div><span class="sw" style="background:#4fc3f733;border:1px dashed #4fc3f7"></span>claimed (in progress)</div>
+      <div><span class="sw" style="background:#4fc3f7"></span>explored (fill = bot colour)</div>
+      <div><span class="sw" style="background:#3a0a0a;border:1px solid #7a1414"></span>condemned (hazard confirmed)</div>
+      <hr>
+      <div><strong style="color:var(--text)">Hazards</strong></div>
+      <div><span class="sw" style="background:#e8a33d"></span>provisional — one witness, deferred</div>
+      <div><span class="sw" style="background:#e5484d"></span>confirmed — two distinct witnesses</div>
+      <hr>
+      <div><span class="sw" style="background:#b07cf0;border-radius:2px"></span>air block being surveyed</div>
+      <div>ring: <span style="color:#35c463">green</span> healthy ·
+        <span style="color:#e5484d">red</span> unhealthy</div>
+    </div>
+  </div>
+  <div id="sidebar">
+    <div class="tierHead">Ground tier — tessera (ROS 2 + Python fold)</div>
+    <div class="agents" id="bots"></div>
+    <div class="tierHead">Air tier — native Rust, no ROS</div>
+    <div class="agents" id="drones"></div>
+    <div id="feedHead">Consensus feed (/vertex/event, decoded here)</div>
+    <div id="feed"></div>
+  </div>
+</main>
+
+<section id="consensus">
+  <div id="consensusHead">Shared consensus state — each agent's own view</div>
+  <div id="consensusSub">
+    Bot columns are what each bot's own <code>mission_state</code> reports. The
+    drones publish nothing to ROS at all — that is the point of the scenario — so
+    their column is this page's own fold of <code>/vertex/event</code>, decoded in
+    JavaScript by the same rules their Rust fold uses. A highlighted cell means a
+    disagreement that has persisted for over a second, which is a real divergence
+    rather than ordinary publish-timing skew.
+  </div>
+  <div id="consensusBody">
+    <div class="matrixWrap">
+      <div class="matrixTitle">Sector state</div>
+      <table class="matrixTable"><thead><tr id="sectorMatrixHead"></tr></thead>
+        <tbody id="sectorMatrixBody"></tbody></table>
+    </div>
+    <div class="matrixWrap">
+      <div class="matrixTitle">Agent health (row = subject, column = observer)</div>
+      <table class="matrixTable"><thead><tr id="healthMatrixHead"></tr></thead>
+        <tbody id="healthMatrixBody"></tbody></table>
+    </div>
+    <div class="matrixWrap">
+      <div class="matrixTitle">Air tier</div>
+      <table class="matrixTable"><thead><tr id="airMatrixHead"></tr></thead>
+        <tbody id="airMatrixBody"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<script src="airground_fold.js"></script>
+<script>
+"use strict";
+
+// Defaults match airground.launch.py.
+const CONFIG = {
+  gridNx: 4, gridNy: 3, gridMinX: -20, gridMinY: -15,
+  cellW: 10, cellH: 10, blockW: 2, blockH: 1,
+};
+const BOTS = ["bot_0", "bot_1"];
+const DRONES = ["drone_0", "drone_1"];
+const AGENTS = [...BOTS, ...DRONES];
+
+// No red in the identity palette: red is reserved for the unhealthy ring and
+// for confirmed hazards, and an agent whose colour is also reddish reads as
+// unhealthy at a glance even when it is not.
+const COLORS = { bot_0: "#4363d8", bot_1: "#3cb44b", drone_0: "#b07cf0", drone_1: "#f58231" };
+const colorOf = (a) => COLORS[a] || "#8892a4";
+const isDrone = (a) => DRONES.includes(a);
+const shortName = (a) => (a || "?").replace("bot_", "B").replace("drone_", "D");
+
+function hexAlpha(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+let geom = makeSectors(CONFIG.gridNx, CONFIG.gridNy, CONFIG.gridMinX, CONFIG.gridMinY,
+                       CONFIG.cellW, CONFIG.cellH);
+let blockGeom = makeBlocks(CONFIG.gridNx, CONFIG.gridNy, CONFIG.blockW, CONFIG.blockH);
+let fold = new AirGroundFold(geom.ids, blockGeom.ids, blockGeom.cells);
+
+// Live, non-consensus data. Bot poses come over ROS; there is deliberately no
+// equivalent for the drones (see drawDrones).
+const botPose = {};
+const botMission = {};
+
+// ---- minimal rosbridge client (subscribe-only JSON over WS) ----
+class RosBridge {
+  constructor() { this.ws = null; this.subs = new Map(); this.timer = null; this.want = false; }
+  connect(url) {
+    this.want = true; clearTimeout(this.timer); setStatus("connecting");
+    this.ws = new WebSocket(url);
+    this.ws.onopen = () => {
+      setStatus("connected");
+      for (const [topic, { type }] of this.subs) this._sub(topic, type);
+    };
+    this.ws.onmessage = (evt) => {
+      let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+      if (msg.op === "publish") { const s = this.subs.get(msg.topic); if (s) s.cb(msg.msg); }
+    };
+    this.ws.onclose = () => {
+      setStatus("disconnected");
+      if (this.want) this.timer = setTimeout(() => this.connect(url), 2000);
+    };
+    this.ws.onerror = () => { try { this.ws.close(); } catch {} };
+  }
+  disconnect() {
+    this.want = false; clearTimeout(this.timer);
+    if (this.ws) { this.ws.onclose = null; this.ws.close(); }
+    setStatus("disconnected");
+  }
+  subscribe(topic, type, cb) {
+    this.subs.set(topic, { type, cb });
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this._sub(topic, type);
+  }
+  _sub(topic, type) { this.ws.send(JSON.stringify({ op: "subscribe", topic, type })); }
+}
+const bridge = new RosBridge();
+
+function decodePayload(b64) {
+  // rosbridge encodes ROS uint8[] as base64, not an integer array. Get this
+  // wrong and every record silently fails to decode and nothing renders.
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const rec = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    return rec && typeof rec === "object" && !Array.isArray(rec) ? rec : null;
+  } catch { return null; }
+}
+
+// ---- event feed ----
+const feedEl = document.getElementById("feed");
+const MAX_FEED = 400;
+function describe(rec, res) {
+  const a = shortName(rec.agent);
+  switch (rec.op) {
+    case "survey_claim": return `${a} claims air block ${rec.block}` + (res.accepted ? " ✓" : " — lost race");
+    case "surveyed":     return `${a} surveyed ${rec.block} → ${(rec.cells || []).join(" ")} now claimable`;
+    case "hazard":       return `${a} sights a hazard in ${rec.cell} — provisional, needs a second witness`;
+    case "corroborate":  return `${a} corroborates ${rec.cell} — CONFIRMED, sector condemned`;
+    case "claim":        return `${a} claims ${rec.sector}` + (res.accepted ? " ✓" : " — refused (unsurveyed or taken)");
+    case "explored":     return `${a} finished ${rec.sector}`;
+    case "abandon":      return `${a} gave up ${rec.sector}`;
+    case "rtb":          return `${a} returning to base — block released`;
+    case "ready":        return `${a} recharged, back on survey duty`;
+    case "health":       return `${a} beacon #${rec.seq}: ${rec.ok ? "OK" : "NOT OK"}`;
+    case "suspect":      return `${a} suspects ${shortName(rec.victim)} (silence lease)`;
+    case "reset":        return `— mission reset → epoch ${rec.epoch} —`;
+    default:             return `unknown op: ${rec.op}`;
+  }
+}
+function pushFeed(rec, res) {
+  // Record fields arrive over the network from other peers' transactions —
+  // never interpolate them into innerHTML. Text nodes only.
+  const div = document.createElement("div");
+  div.className = "ev " + (rec.op || "") + (res && res.accepted === false ? " rejected" : "");
+  const t = document.createElement("span");
+  t.className = "t"; t.textContent = new Date().toLocaleTimeString();
+  div.appendChild(t);
+  div.appendChild(document.createTextNode(describe(rec, res || {})));
+  feedEl.appendChild(div);
+  while (feedEl.children.length > MAX_FEED) feedEl.removeChild(feedEl.firstChild);
+  feedEl.scrollTop = feedEl.scrollHeight;
+}
+
+// ---- canvas ----
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+function resizeCanvas() {
+  const w = document.getElementById("mapWrap");
+  canvas.width = w.clientWidth; canvas.height = w.clientHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+
+function transform() {
+  const minX = CONFIG.gridMinX, maxX = minX + CONFIG.gridNx * CONFIG.cellW;
+  const minY = CONFIG.gridMinY, maxY = minY + CONFIG.gridNy * CONFIG.cellH;
+  const m = 40;
+  const scale = Math.min((canvas.width - m * 2) / (maxX - minX),
+                         (canvas.height - m * 2) / (maxY - minY));
+  return { scale, toScreen: (x, y) => [m + (x - minX) * scale,
+                                       canvas.height - m - (y - minY) * scale] };
+}
+
+// mission_state is a current-state snapshot republished every tick; our own
+// fold only knows records seen since we subscribed, because ROS topics do not
+// replay history. Anyone opening this page mid-run would otherwise see an
+// empty map. Prefer a bot's snapshot for sector state; fall back to the fold.
+function snapshot() {
+  for (const b of BOTS) if (botMission[b]) return botMission[b];
+  return null;
+}
+const asSet = (v) => new Set(Array.isArray(v) ? v : []);
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const tr = transform();
+  const snap = snapshot();
+
+  const surveyed = snap ? asSet(snap.surveyed) : fold.surveyed;
+  const claimed = snap && snap.claimed && typeof snap.claimed === "object" ? snap.claimed : fold.claimed;
+  const explored = snap ? asSet(snap.explored) : fold.explored;
+  const exploredBy = snap && snap.explored_by && typeof snap.explored_by === "object"
+    ? snap.explored_by : fold.exploredBy;
+  const unreachable = snap ? asSet(snap.unreachable) : fold.unreachable;
+  const unhealthy = snap ? asSet(snap.unhealthy) : fold.unhealthy;
+  const hazards = snap && snap.hazard_reports && typeof snap.hazard_reports === "object"
+    ? snap.hazard_reports : Object.fromEntries(
+        Object.entries(fold.hazardReports).map(([c, w]) => [c, [...w]]));
+  const confirmed = snap ? asSet(snap.confirmed_hazards) : fold.confirmedHazards;
+  const blockClaims = snap && snap.block_claims && typeof snap.block_claims === "object"
+    ? snap.block_claims : fold.blockClaims;
+
+  // --- air blocks underneath, so a surveyed block reads as a backdrop ---
+  for (const [bid, holder] of Object.entries(blockClaims)) {
+    const cells = blockGeom.cells[bid] || [];
+    if (!cells.length) continue;
+    const xs = cells.map((c) => geom.centers[c][0]), ys = cells.map((c) => geom.centers[c][1]);
+    const [x0, y0] = tr.toScreen(Math.min(...xs) - CONFIG.cellW / 2, Math.max(...ys) + CONFIG.cellH / 2);
+    const [x1, y1] = tr.toScreen(Math.max(...xs) + CONFIG.cellW / 2, Math.min(...ys) - CONFIG.cellH / 2);
+    ctx.fillStyle = hexAlpha(colorOf(holder), 0.13);
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = colorOf(holder); ctx.lineWidth = 2; ctx.setLineDash([2, 5]);
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.setLineDash([]);
+    ctx.fillStyle = colorOf(holder);
+    ctx.font = "bold 11px ui-monospace, monospace"; ctx.textAlign = "left";
+    ctx.fillText(`${bid} · ${shortName(holder)} surveying`, x0 + 6, y0 + 14);
+  }
+
+  // --- ground sectors ---
+  for (const sid of geom.ids) {
+    const [cx, cy] = geom.centers[sid];
+    const [sx, sy] = tr.toScreen(cx, cy);
+    const w = tr.scale * CONFIG.cellW, h = tr.scale * CONFIG.cellH;
+    const x0 = sx - w / 2, y0 = sy - h / 2;
+
+    let fill = "#1a1f2b", stroke = "#333", dashed = false, label = "";
+    if (unreachable.has(sid)) { fill = "#3a0a0a"; stroke = "#7a1414"; label = "condemned"; }
+    else if (explored.has(sid)) {
+      const by = exploredBy[sid];
+      if (by != null) { fill = hexAlpha(colorOf(by), 0.85); stroke = colorOf(by); label = shortName(by); }
+      else { fill = "#2a3a2f"; stroke = "#4a6a55"; label = "?"; }
+    } else if (sid in claimed) {
+      const by = claimed[sid];
+      fill = hexAlpha(colorOf(by), 0.28); stroke = colorOf(by); dashed = true;
+      label = shortName(by) + "…";
+    } else if (surveyed.has(sid)) { fill = "#f4f4f4"; stroke = "#999"; }
+    // else: unsurveyed — the cross-tier gate, drawn dark so the map visibly
+    // fills in as the air tier works.
+
+    ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = 2;
+    ctx.setLineDash(dashed ? [5, 4] : []);
+    ctx.fillRect(x0, y0, w, h); ctx.strokeRect(x0, y0, w, h);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = explored.has(sid) ? "#0b0e14" : "#9099ab";
+    ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "left";
+    ctx.fillText(sid, x0 + 4, y0 + 12);
+    if (!surveyed.has(sid) && !explored.has(sid) && !unreachable.has(sid)) {
+      ctx.fillStyle = "#4a5568"; ctx.font = "italic 10px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("unsurveyed", sx, sy + 3);
+    }
+    if (label) {
+      ctx.fillStyle = explored.has(sid) ? "#0b0e14" : "#c8d0dc";
+      ctx.font = "bold 12px ui-monospace, monospace"; ctx.textAlign = "right";
+      ctx.fillText(label, x0 + w - 4, y0 + h - 6);
+    }
+
+    // hazard marker: witness count is the whole story, so show it
+    const wits = hazards[sid];
+    if (Array.isArray(wits) && wits.length) {
+      const done = confirmed.has(sid);
+      ctx.beginPath(); ctx.arc(x0 + 14, y0 + h - 15, 8, 0, Math.PI * 2);
+      ctx.fillStyle = done ? "#e5484d" : "#e8a33d"; ctx.fill();
+      ctx.fillStyle = "#0b0e14"; ctx.font = "bold 10px ui-monospace, monospace";
+      ctx.textAlign = "center"; ctx.fillText(String(wits.length), x0 + 14, y0 + h - 11);
+    }
+  }
+
+  drawBots(tr, unhealthy);
+  drawDrones(tr, unhealthy, blockClaims);
+  requestAnimationFrame(render);
+}
+
+function drawBots(tr, unhealthy) {
+  for (const b of BOTS) {
+    const p = botPose[b];
+    if (!p) continue;
+    const [sx, sy] = tr.toScreen(p.x, p.y);
+    ctx.beginPath(); ctx.arc(sx, sy, 11, 0, Math.PI * 2);
+    ctx.fillStyle = colorOf(b); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = unhealthy.has(b) ? "#e5484d" : "#35c463"; ctx.stroke();
+    ctx.fillStyle = "#0b0e14"; ctx.font = "bold 11px ui-monospace, monospace";
+    ctx.textAlign = "center"; ctx.fillText(shortName(b), sx, sy + 4);
+  }
+}
+
+// The drones publish NOTHING to ROS — no pose, no state, no diagnostics. That
+// is the scenario's whole claim, so this page will not invent a position for
+// them. They are drawn over the block consensus says they hold, and parked at
+// the edge when idle. Everything shown about a drone is derived from the
+// ordered log, which is the only thing it shares with anyone.
+function drawDrones(tr, unhealthy, blockClaims) {
+  DRONES.forEach((d, i) => {
+    const bid = Object.keys(blockClaims).find((b) => blockClaims[b] === d);
+    let wx, wy;
+    if (bid) {
+      const cells = blockGeom.cells[bid] || [];
+      wx = cells.reduce((s, c) => s + geom.centers[c][0], 0) / cells.length;
+      wy = cells.reduce((s, c) => s + geom.centers[c][1], 0) / cells.length;
+    } else {
+      wx = CONFIG.gridMinX + CONFIG.gridNx * CONFIG.cellW + 4;
+      wy = CONFIG.gridMinY + CONFIG.cellH * (0.6 + i * 0.9);
+    }
+    const [sx, sy] = tr.toScreen(wx, wy);
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.beginPath();               // a diamond, so air never reads as ground
+    ctx.moveTo(0, -13); ctx.lineTo(13, 0); ctx.lineTo(0, 13); ctx.lineTo(-13, 0);
+    ctx.closePath();
+    ctx.fillStyle = colorOf(d); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = unhealthy.has(d) ? "#e5484d" : "#35c463"; ctx.stroke();
+    ctx.fillStyle = "#0b0e14"; ctx.font = "bold 11px ui-monospace, monospace";
+    ctx.textAlign = "center"; ctx.fillText(shortName(d), 0, 4);
+    ctx.restore();
+    if (!bid) {
+      ctx.fillStyle = "#5c6579"; ctx.font = "italic 10px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("no ROS pose", sx, sy + 26);
+    }
+  });
+}
+
+// ---- sidebar ----
+function agentCard(a, roleText, subText, healthy) {
+  const card = document.createElement("div");
+  card.className = "card" + (isDrone(a) ? " air" : "");
+  const id = document.createElement("div");
+  id.className = "id"; id.style.background = colorOf(a); id.textContent = shortName(a);
+  const health = document.createElement("div");
+  health.className = "health"; health.style.background = healthy ? "#35c463" : "#e5484d";
+  const info = document.createElement("div"); info.className = "info";
+  const role = document.createElement("div"); role.className = "role"; role.textContent = roleText;
+  const sub = document.createElement("div"); sub.className = "sub"; sub.textContent = subText;
+  info.appendChild(role); info.appendChild(sub);
+  card.appendChild(id); card.appendChild(health); card.appendChild(info);
+  return card;
+}
+
+function renderAgents() {
+  const snap = snapshot();
+  const unhealthy = snap ? asSet(snap.unhealthy) : fold.unhealthy;
+  const claimed = snap && snap.claimed ? snap.claimed : fold.claimed;
+  const blockClaims = snap && snap.block_claims ? snap.block_claims : fold.blockClaims;
+  const grounded = snap ? asSet(snap.grounded) : fold.grounded;
+  const surveyed = snap ? asSet(snap.surveyed) : fold.surveyed;
+  const phase = snap ? snap.phase : fold.phase;
+
+  const botsEl = document.getElementById("bots");
+  botsEl.innerHTML = "";
+  for (const b of BOTS) {
+    const mine = Object.keys(claimed).find((s) => claimed[s] === b);
+    let role = "idle", sub = phase || "";
+    if (phase === "done") role = "done";
+    else if (mine) { role = "sweeping " + mine; }
+    else if (surveyed.size === 0) { role = "waiting on the air tier"; sub = "nothing surveyed yet"; }
+    const p = botPose[b];
+    if (p) sub = `${sub} · (${p.x.toFixed(1)}, ${p.y.toFixed(1)})`;
+    botsEl.appendChild(agentCard(b, role, sub, !unhealthy.has(b)));
+  }
+
+  const dronesEl = document.getElementById("drones");
+  dronesEl.innerHTML = "";
+  for (const d of DRONES) {
+    const bid = Object.keys(blockClaims).find((x) => blockClaims[x] === d);
+    let role = "idle", sub = "no ROS presence — state via consensus only";
+    if (grounded.has(d)) { role = "returned to base"; sub = "recharging · block released"; }
+    else if (bid) { role = "surveying " + bid; sub = (blockGeom.cells[bid] || []).join(" "); }
+    else if (phase === "done") role = "done";
+    dronesEl.appendChild(agentCard(d, role, sub, !unhealthy.has(d)));
+  }
+}
+setInterval(renderAgents, 300);
+
+// ---- consensus matrices ----
+const DISAGREE_GRACE_MS = 900;
+const disagreeSince = {};
+function markDisagreements(tr, seen, key) {
+  if (new Set(seen).size > 1) {
+    const since = disagreeSince[key] || (disagreeSince[key] = Date.now());
+    if (Date.now() - since < DISAGREE_GRACE_MS) return;
+    for (let i = 1; i < tr.children.length; i++) tr.children[i].classList.add("disagree");
+  } else delete disagreeSince[key];
+}
+function headerRow(el, label, cols) {
+  el.innerHTML = "";
+  const th = document.createElement("th"); th.className = "rowHead"; th.textContent = label;
+  el.appendChild(th);
+  for (const c of cols) {
+    const t = document.createElement("th");
+    t.textContent = shortName(c) + (isDrone(c) ? " (fold)" : "");
+    t.style.color = colorOf(c);
+    el.appendChild(t);
+  }
+}
+// A bot's own mission_state for a bot column; this page's fold stands in for
+// the drones, which publish nothing.
+function viewOf(agent) {
+  if (isDrone(agent)) return fold.snapshot();
+  return botMission[agent] || null;
+}
+
+function renderMatrices() {
+  headerRow(document.getElementById("sectorMatrixHead"), "Sector", AGENTS);
+  const sBody = document.getElementById("sectorMatrixBody");
+  sBody.innerHTML = "";
+  for (const sid of geom.ids) {
+    const tr = document.createElement("tr");
+    const rh = document.createElement("td"); rh.className = "rowHead"; rh.textContent = sid;
+    tr.appendChild(rh);
+    const seen = [];
+    for (const a of AGENTS) {
+      const v = viewOf(a);
+      const td = document.createElement("td");
+      let text = "-", color = "var(--dim)";
+      if (v) {
+        if (asSet(v.explored).has(sid)) {
+          const by = v.explored_by && typeof v.explored_by === "object" ? v.explored_by[sid] : null;
+          text = by ? "explored·" + shortName(by) : "explored";
+          color = by ? colorOf(by) : "#4a6a55";
+        } else if (asSet(v.unreachable).has(sid)) { text = "condemned"; color = "#e5484d"; }
+        else if (v.claimed && typeof v.claimed === "object" && sid in v.claimed) {
+          text = "claimed·" + shortName(v.claimed[sid]); color = colorOf(v.claimed[sid]);
+        } else if (asSet(v.surveyed).has(sid)) { text = "surveyed"; color = "#c8d0dc"; }
+        else { text = "unsurveyed"; color = "#5c6579"; }
+        seen.push(text);
+      }
+      td.textContent = text; td.style.color = color;
+      tr.appendChild(td);
+    }
+    markDisagreements(tr, seen, "sector:" + sid);
+    sBody.appendChild(tr);
+  }
+
+  headerRow(document.getElementById("healthMatrixHead"), "agent \\ observer", AGENTS);
+  const hBody = document.getElementById("healthMatrixBody");
+  hBody.innerHTML = "";
+  for (const subject of AGENTS) {
+    const tr = document.createElement("tr");
+    const rh = document.createElement("td");
+    rh.className = "rowHead"; rh.textContent = subject; rh.style.color = colorOf(subject);
+    tr.appendChild(rh);
+    const seen = [];
+    for (const observer of AGENTS) {
+      const v = viewOf(observer);
+      const td = document.createElement("td");
+      if (v && Array.isArray(v.unhealthy)) {
+        const bad = v.unhealthy.includes(subject);
+        td.textContent = bad ? "NOT OK" : "OK";
+        td.style.color = bad ? "#e5484d" : "#35c463";
+        seen.push(bad);
+      } else { td.textContent = "-"; td.style.color = "var(--dim)"; }
+      tr.appendChild(td);
+    }
+    markDisagreements(tr, seen, "health:" + subject);
+    hBody.appendChild(tr);
+  }
+
+  headerRow(document.getElementById("airMatrixHead"), "Block", AGENTS);
+  const aBody = document.getElementById("airMatrixBody");
+  aBody.innerHTML = "";
+  for (const bid of blockGeom.ids) {
+    const tr = document.createElement("tr");
+    const rh = document.createElement("td"); rh.className = "rowHead"; rh.textContent = bid;
+    tr.appendChild(rh);
+    const seen = [];
+    for (const a of AGENTS) {
+      const v = viewOf(a);
+      const td = document.createElement("td");
+      let text = "-", color = "var(--dim)";
+      if (v) {
+        if (asSet(v.surveyed_blocks).has(bid)) { text = "surveyed"; color = "#35c463"; }
+        else if (v.block_claims && typeof v.block_claims === "object" && bid in v.block_claims) {
+          text = shortName(v.block_claims[bid]) + " flying"; color = colorOf(v.block_claims[bid]);
+        } else { text = "free"; color = "#5c6579"; }
+        seen.push(text);
+      }
+      td.textContent = text; td.style.color = color;
+      tr.appendChild(td);
+    }
+    markDisagreements(tr, seen, "block:" + bid);
+    aBody.appendChild(tr);
+  }
+}
+setInterval(renderMatrices, 300);
+
+function setStatus(s) {
+  const el = document.getElementById("status");
+  el.className = s; el.textContent = s;
+}
+
+function subscribeAll() {
+  // Every peer delivers a byte-identical /vertex/event stream (this project's
+  // test suite verifies it), so one bot's tap shows the whole fleet — the
+  // drones' transactions included, which is how this page sees the air tier
+  // at all.
+  bridge.subscribe(`/${BOTS[0]}/vertex/event`, "vertex_ros2_msgs/msg/VertexEvent", (msg) => {
+    for (const txn of msg.transactions || []) {
+      const rec = decodePayload(txn.payload);
+      if (!rec) continue;
+      pushFeed(rec, fold.apply(rec));
+    }
+  });
+  for (const b of BOTS) {
+    bridge.subscribe(`/${b}/pose`, "geometry_msgs/msg/PointStamped", (m) => {
+      botPose[b] = { x: m.point.x, y: m.point.y };
+    });
+    bridge.subscribe(`/${b}/mission_state`, "std_msgs/msg/String", (m) => {
+      try { botMission[b] = JSON.parse(m.data); } catch {}
+    });
+  }
+}
+
+document.getElementById("connectBtn").addEventListener("click", () => {
+  const num = (id, dflt) => parseFloat(document.getElementById(id).value) || dflt;
+  CONFIG.gridNx = num("gridNx", 4); CONFIG.gridNy = num("gridNy", 3);
+  CONFIG.gridMinX = num("gridMinX", -20); CONFIG.gridMinY = num("gridMinY", -15);
+  CONFIG.cellW = num("cellW", 10); CONFIG.cellH = num("cellH", 10);
+  CONFIG.blockW = num("blockW", 2); CONFIG.blockH = num("blockH", 1);
+  geom = makeSectors(CONFIG.gridNx, CONFIG.gridNy, CONFIG.gridMinX, CONFIG.gridMinY,
+                     CONFIG.cellW, CONFIG.cellH);
+  blockGeom = makeBlocks(CONFIG.gridNx, CONFIG.gridNy, CONFIG.blockW, CONFIG.blockH);
+  fold = new AirGroundFold(geom.ids, blockGeom.ids, blockGeom.cells);
+  feedEl.innerHTML = "";
+  for (const k of Object.keys(botPose)) delete botPose[k];
+  for (const k of Object.keys(botMission)) delete botMission[k];
+  for (const k of Object.keys(disagreeSince)) delete disagreeSince[k];
+
+  bridge.disconnect(); bridge.subs.clear(); subscribeAll();
+  bridge.connect(document.getElementById("url").value.trim());
+});
+
+resizeCanvas();
+requestAnimationFrame(render);
+renderAgents();
+renderMatrices();
+</script>
+</body>
+</html>

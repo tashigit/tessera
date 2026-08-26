@@ -65,9 +65,10 @@ impl Conduct {
 /// The lawnmower pass over one block, plus what the ranger saw along the way.
 pub struct Plan {
     pub block: String,
+    cells: Vec<String>,
     waypoints: Vec<(f64, f64)>,
     cursor: usize,
-    /// Cells whose clearance came back long: candidate pits.
+    /// Cells whose clearance came back long: candidate craters.
     pub sighted: Vec<String>,
 }
 
@@ -106,6 +107,7 @@ impl Plan {
 
         Plan {
             block: block.to_string(),
+            cells: cells.to_vec(),
             waypoints: serpentine,
             cursor: 0,
             sighted: Vec::new(),
@@ -120,21 +122,37 @@ impl Plan {
         self.cursor >= self.waypoints.len()
     }
 
-    /// Advance if the drone has reached the current waypoint, and record a
-    /// sighting if the ground under it read long. Returns true on arrival.
-    pub fn advance(&mut self, t: &Telemetry, cell: Option<&str>) -> bool {
+    /// Sample the ranger. Call this on EVERY telemetry frame, not just on
+    /// waypoint arrival.
+    ///
+    /// Sampling only at arrival misses craters: the arrival test has a
+    /// tolerance, so the one reading is taken up to `WP_RADIUS` off the sector
+    /// centre, where a bowl is far shallower than at its middle. With a 4 m
+    /// crater that put the single sample on a 0.47 m lip against a 0.6 m
+    /// threshold, and the drones reported a clear map over craters they had
+    /// flown straight across. A real survey integrates along the whole pass,
+    /// which is also cheaper to reason about: any frame over any cell of the
+    /// block can raise the alarm.
+    pub fn observe(&mut self, t: &Telemetry, cell: Option<&str>) {
+        let Some(c) = cell else { return };
+        // Only cells of the block we hold: a drone reports what it flew over.
+        if !self.cells.iter().any(|x| x == c) {
+            return;
+        }
+        // Expected clearance is the altitude itself over flat ground. A crater
+        // shows up as materially more range for the same altitude.
+        if t.clearance.is_finite() && t.clearance > t.z + PIT_MARGIN
+            && !self.sighted.iter().any(|s| s == c)
+        {
+            self.sighted.push(c.to_string());
+        }
+    }
+
+    /// Advance the pass if the drone has reached the current waypoint.
+    pub fn advance(&mut self, t: &Telemetry) -> bool {
         let Some((wx, wy)) = self.current() else { return false };
         if (t.x - wx).hypot(t.y - wy) > WP_RADIUS {
             return false;
-        }
-        // Expected clearance is the altitude itself over flat floor. A crater
-        // shows up as materially more range for the same altitude.
-        if t.clearance.is_finite() && t.clearance > t.z + PIT_MARGIN {
-            if let Some(c) = cell {
-                if !self.sighted.iter().any(|s| s == c) {
-                    self.sighted.push(c.to_string());
-                }
-            }
         }
         self.cursor += 1;
         true
@@ -279,7 +297,8 @@ mod tests {
         let mut plan = Plan::new("B00", &["S00".to_string()], &c);
         let (wx, wy) = plan.current().unwrap();
         // Ground reads a metre further away than the altitude: a crater.
-        assert!(plan.advance(&tele(wx, wy, SURVEY_ALT, SURVEY_ALT + 1.0), Some("S00")));
+        plan.observe(&tele(wx, wy, SURVEY_ALT, SURVEY_ALT + 1.0), Some("S00"));
+        assert!(plan.advance(&tele(wx, wy, SURVEY_ALT, SURVEY_ALT + 1.0)));
         assert_eq!(plan.sighted, vec!["S00"]);
         assert!(plan.finished());
     }
@@ -290,7 +309,7 @@ mod tests {
         let mut plan = Plan::new("B00", &["S00".to_string()], &c);
         let (wx, wy) = plan.current().unwrap();
         // A little ranging noise, well under the margin.
-        plan.advance(&tele(wx, wy, SURVEY_ALT, SURVEY_ALT + 0.1), Some("S00"));
+        plan.observe(&tele(wx, wy, SURVEY_ALT, SURVEY_ALT + 0.1), Some("S00"));
         assert!(plan.sighted.is_empty());
     }
 
@@ -298,7 +317,7 @@ mod tests {
     fn distant_drone_does_not_advance() {
         let c = centers();
         let mut plan = Plan::new("B00", &["S00".to_string()], &c);
-        assert!(!plan.advance(&tele(100.0, 100.0, SURVEY_ALT, SURVEY_ALT), Some("S00")));
+        assert!(!plan.advance(&tele(100.0, 100.0, SURVEY_ALT, SURVEY_ALT)));
         assert!(!plan.finished());
     }
 

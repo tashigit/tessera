@@ -46,11 +46,16 @@ N = int(SPAN / STEP) + 1
 # Craters, as (x, y, radius, depth). Both sit on a SECTOR CENTRE, because the
 # drones survey centre to centre and would otherwise fly straight past them.
 # S05 is the one the launch_test also uses (against a mock crater).
-#   1.5 m deep: invisible to a Sick LMS 291 at 0.32 m, an unmistakable 1.5 m
-#   anomaly to a downward ranger at 12 m, and steep enough to stop a Pioneer
-#   without trapping it beyond the reverse escape its controller already has.
-CRATERS = [(-5.0, 0.0, 4.0, 1.5),      # S05
-           (15.0, 0.0, 4.0, 1.5)]      # S07
+#   2.5 m deep over a 3 m radius. Invisible to a Sick LMS 291 at 0.32 m and an
+#   unmistakable anomaly to a downward ranger at 12 m. The steepness matters as
+#   much as the depth: at 4 m radius the walls were only about 30 degrees and a
+#   Pioneer drove straight through, reaching the sector centre and crediting it
+#   as explored. At 3 m they are past 50 degrees, so the robot is stopped AT THE
+#   RIM. That is the behaviour worth having: it makes no progress, stalls, and
+#   reports `abandon` + `corroborate`, but it is never trapped and stays free to
+#   work elsewhere.
+CRATERS = [(-5.0, 0.0, 3.0, 2.5),      # S05
+           (15.0, 0.0, 3.0, 2.5)]      # S07
 
 
 def height(x, y):
