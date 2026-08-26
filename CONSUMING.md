@@ -18,13 +18,15 @@ What you get:
 
 - ROS 2 Jazzy (or use the Docker harness below and skip a native install)
 - Rust (stable) and CMake, for building the engine bindings
-- Git access to `tashigit/tessera` and `tashigit/tashi-vertex-rs` (both
-  private, so an org membership or a read-scoped PAT)
+- Git access to `tashigit/tessera` (private, so an org membership or a
+  read-scoped PAT). The `tashi-vertex` bindings come from crates.io and need
+  no credentials.
 
 ## 2. Workspace
 
-The two repositories must sit side by side (`tashi-vertex-rs` is a path
-dependency). One step with vcs:
+This repo is the only checkout you need. `vertex_core` pins `tashi-vertex` to
+an exact version from crates.io, and that crate's build script downloads the
+matching engine release. One step with vcs:
 
 ```bash
 mkdir -p vertex_ws/src && cd vertex_ws
@@ -32,13 +34,13 @@ curl -fsSL https://raw.githubusercontent.com/tashigit/tessera/main/tessera.repos
 vcs import src < tessera.repos
 ```
 
-Your own packages go in `src/` next to them.
+Your own packages go in `src/` next to it.
 
 The repos file on `main` tracks `main`. For a reproducible build, replace the
-two `version:` fields with a release: the tessera tag, and the
-`tashi-vertex-rs` commit recorded in that release's notes (see
-`RELEASING.md`). Releases also ship a prebuilt Jazzy install-space tarball if
-you want to skip building entirely.
+`version:` field with a release tag. The engine versions are pinned by
+`vertex_core/Cargo.toml` and its lockfile, so the tag alone fixes the whole
+chain (see `RELEASING.md`). Releases also ship a prebuilt Jazzy install-space
+tarball if you want to skip building entirely.
 
 ## 3. Build
 

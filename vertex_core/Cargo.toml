@@ -6,7 +6,7 @@ description = "ROS-agnostic core of the Vertex/ROS 2 integration: lifecycle, the
 license = "Apache-2.0"
 
 [dependencies]
-tashi-vertex = { path = "../../tashi-vertex-rs" }
+tashi-vertex = "=0.14.0"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 arc-swap = "1"

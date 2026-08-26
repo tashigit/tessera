@@ -10,9 +10,9 @@
 #   soak    the 10-minute RSS soak launch_test (SOAK_SECONDS overrides length)
 #   shell   drop into an interactive shell with the environment sourced
 #
-# Expects the repos bind-mounted (see docker-compose.yml):
-#   /ws/src/tessera           this repo
-#   /ws/src/tashi-vertex-rs   sibling crate (vertex_core's path dependency)
+# Expects this repo bind-mounted at /ws/src/tessera (see docker-compose.yml).
+# Nothing else is needed: `tashi-vertex` is pinned from crates.io and its build
+# script downloads the matching tashi-vertex-c release.
 set -euo pipefail
 
 # ROS setup scripts reference unset variables (AMENT_TRACE_SETUP_FILES, ...) and
@@ -33,8 +33,6 @@ export ROS_LOCALHOST_ONLY=1
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
 TESSERA=/ws/src/tessera
-VERTEX_RS=/ws/src/tashi-vertex-rs
-export VERTEX_RS
 
 # Optional: link against a locally-mounted tashi-vertex-c instead of letting
 # CMake download the release archive (set TASHI_VERTEX_LOCAL_DIR via compose).
@@ -51,7 +49,6 @@ run_core() {
 build_ros() {
   echo "==> colcon build --packages-up-to vertex_ros2 vertex_fleet"
   cd /ws
-  # tashi-vertex-rs lives under src/ as a path dependency, not a colcon package;
   # --packages-up-to builds only the listed packages and their colcon deps.
   colcon build --packages-up-to vertex_ros2 vertex_fleet \
     --cmake-args -DCMAKE_BUILD_TYPE=Release
@@ -62,8 +59,8 @@ build_ros() {
 }
 
 # The colcon-installed vertex_node links libtashi-vertex.so but has no rpath to
-# it on Linux (tashi-vertex-rs's build.rs only sets an rpath on macOS). Locate
-# the .so produced during the cargo build and put its directory on
+# it on Linux (the tashi-vertex build script only sets an rpath on macOS).
+# Locate the .so produced during the cargo build and put its directory on
 # LD_LIBRARY_PATH; launched node processes inherit it.
 export_tv_libpath() {
   local so
@@ -80,23 +77,21 @@ export_tv_libpath() {
 gen_fixtures() {
   if [ ! -f "${TESSERA}/vertex_ros2/test/fixtures/peers.json" ]; then
     echo "==> generating test/fixtures/peers.json"
-    ( cd "${TESSERA}/vertex_ros2/test" && VERTEX_RS="${VERTEX_RS}" bash gen_test_keys.sh )
+    ( cd "${TESSERA}/vertex_ros2/test" && bash gen_test_keys.sh )
   fi
 }
 
 gen_peers4() {
   if [ ! -f "${TESSERA}/vertex_ros2/test/simulation/fixtures/peers4.json" ]; then
     echo "==> generating simulation fixtures/peers4.json"
-    ( VERTEX_RS="${VERTEX_RS}" bash \
-        "${TESSERA}/vertex_ros2/test/simulation/fixtures/gen_peers4.sh" )
+    ( bash "${TESSERA}/vertex_ros2/test/simulation/fixtures/gen_peers4.sh" )
   fi
 }
 
 gen_peers5() {
   if [ ! -f "${TESSERA}/vertex_ros2/test/simulation_arena/fixtures/peers5.json" ]; then
     echo "==> generating simulation fixtures/peers5.json"
-    ( VERTEX_RS="${VERTEX_RS}" bash \
-        "${TESSERA}/vertex_ros2/test/simulation_arena/fixtures/gen_peers5.sh" )
+    ( bash "${TESSERA}/vertex_ros2/test/simulation_arena/fixtures/gen_peers5.sh" )
   fi
 }
 

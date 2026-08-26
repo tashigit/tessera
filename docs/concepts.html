@@ -233,7 +233,7 @@
   <h1>Vertex consensus for ROS&nbsp;2: concepts and protocol design</h1>
   <p class="lede">This volume builds the mental model and the design skill: what the Tashi Vertex engine actually guarantees, how leaderless fleet coordination falls out of one ordered log, and how to design a correct application protocol before writing code. I use tessera's four-robot route-exploration simulation as the worked example. For implementation you then build on the <code>vertex_fleet</code> library, which is Volume&nbsp;2; this volume shows the library's concepts and, where useful, what it does underneath.</p>
   <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;Concepts and protocol design (you are here) &nbsp;→&nbsp; 2&nbsp;·&nbsp;<a href="fleet-api.html">The fleet API</a> (build your integration) &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> (non-ROS embeddings and adapters) &nbsp;·&nbsp; 4&nbsp;·&nbsp;<a href="porting.html">Porting a broker-based fleet</a> (arriving with an MQTT-coordinated fleet). In a hurry? Start with Volume&nbsp;2 and return here when you design your own protocol.</div>
-  <p class="kicker">You need: ROS 2 Jazzy (or the tessera Docker harness), Rust, and access to the <code>tessera</code> and <code>tashi-vertex-rs</code> repositories.</p>
+  <p class="kicker">You need: ROS 2 Jazzy (or the tessera Docker harness), Rust, and access to the <code>tessera</code> repository.</p>
 </header>
 
 <h2 id="model">The mental model: one ordered log, everywhere</h2>
@@ -290,11 +290,10 @@
 </table></div>
 
 <h2 id="s1"><span class="stepno">Step 1</span>Set up the workspace</h2>
-<p>Check out <code>tessera</code> and <code>tashi-vertex-rs</code> side by side. The Rust crate is a path dependency of tessera's <code>vertex_core</code>, so the sibling layout is required.</p>
+<p>Check out <code>tessera</code>. It is the only repository you need: <code>vertex_core</code> pins the <code>tashi-vertex</code> bindings to an exact version from crates.io, and that crate's build script downloads the matching C engine release.</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 mkdir consensus-fleet &amp;&amp; cd consensus-fleet
 git clone git@github.com:tashigit/tessera.git
-git clone git@github.com:tashigit/tashi-vertex-rs.git
 </pre></div>
 <p>The fastest path to a working build is tessera's Docker harness. It gives you ROS 2 Jazzy, the ros2-rust toolchain, and cached colcon builds without touching your host:</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
@@ -303,7 +302,7 @@ docker compose build            <span class="c"># build the Jazzy environment im
 docker compose run --rm build   <span class="c"># colcon build vertex_ros2 inside the container</span>
 docker compose run --rm shell   <span class="c"># interactive shell with the env sourced</span>
 </pre></div>
-<p>On a native ROS 2 Jazzy install, build with colcon from a workspace that contains both checkouts under <code>src/</code>:</p>
+<p>On a native ROS 2 Jazzy install, build with colcon from a workspace that contains the checkout under <code>src/</code>:</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 colcon build --packages-up-to vertex_ros2 --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
@@ -320,9 +319,9 @@ source install/setup.bash
   {<span class="f">"secret"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"public"</span>: <span class="s">"&lt;base58&gt;"</span>, <span class="f">"addr"</span>: <span class="s">"127.0.0.1:47614"</span>}
 ]
 </pre></div>
-<p>Generate keypairs with the <code>key-generate</code> example in <code>tashi-vertex-rs</code>. Tessera wraps it in ready-made scripts: <code>vertex_ros2/test/gen_test_keys.sh</code> emits three peers and <code>vertex_ros2/test/simulation/fixtures/gen_peers4.sh</code> emits four. Adapt either to your fleet size:</p>
+<p>Generate keypairs with <code>vertex_core</code>'s <code>key-generate</code> example. Tessera wraps it in ready-made scripts: <code>vertex_ros2/test/gen_test_keys.sh</code> emits three peers and <code>vertex_ros2/test/simulation/fixtures/gen_peers4.sh</code> emits four. Adapt either to your fleet size:</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
-( cd ../tashi-vertex-rs &amp;&amp; cargo run --quiet --example key-generate )
+( cd vertex_core &amp;&amp; cargo run --quiet --example key-generate )
 <span class="c"># Secret: &lt;base58 secret key&gt;</span>
 <span class="c"># Public: &lt;base58 public key&gt;</span>
 </pre></div>
@@ -525,7 +524,7 @@ min_len = <span class="k">min</span>(<span class="k">len</span>(events[i]) <span
 <ul class="checklist" id="cklist">
   <li><input type="checkbox" id="c1"><label for="c1">Split the design: agreements through Vertex, reflexes local</label></li>
   <li><input type="checkbox" id="c2"><label for="c2">Fleet sized for the faults I must survive (n ≥ 3f + 1)</label></li>
-  <li><input type="checkbox" id="c3"><label for="c3">Workspace builds: tessera + tashi-vertex-rs siblings, colcon or Docker harness</label></li>
+  <li><input type="checkbox" id="c3"><label for="c3">Workspace builds: the tessera checkout, colcon or Docker harness</label></li>
   <li><input type="checkbox" id="c4"><label for="c4">Keypairs generated, peers file written, secrets in files not parameters</label></li>
   <li><input type="checkbox" id="c5"><label for="c5">One vertex_node per agent, contract topics remapped per namespace</label></li>
   <li><input type="checkbox" id="c6"><label for="c6">Lifecycle bring-up inherited from VertexAgent (or automated yourself on the raw path)</label></li>

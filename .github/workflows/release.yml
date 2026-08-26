@@ -26,13 +26,6 @@ jobs:
         with:
           path: tessera
 
-      - name: Checkout tashi-vertex-rs (sibling path dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: tashigit/tashi-vertex-rs
-          path: tashi-vertex-rs
-          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
-
       - name: Free disk space
         run: |
           df -h /
@@ -71,6 +64,11 @@ jobs:
             so=$(find /ws/build -name libtashi-vertex.so | head -n1)
             cp "$so" /ws/install/vertex_ros2/lib/vertex_ros2/   # $ORIGIN: next to vertex_node
             tar -C /ws -czf "/ws/src/tessera/vertex-ros2-jazzy-${GITHUB_REF_NAME}-amd64.tar.gz" install
+            # The engine release the pinned crate downloaded, read back from the
+            # vendored crate rather than assumed to match its own version.
+            cml=$(ls -d "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/tashi-vertex-*/CMakeLists.txt | head -n1)
+            sed -n "s/.*TASHI_VERTEX_VERSION \"\([0-9.]*\)\".*/\1/p" "$cml" | head -n1 \
+              > /ws/src/tessera/engine_version.txt
           '
           ls -la vertex-ros2-jazzy-*.tar.gz
 
@@ -79,15 +77,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TV_RS_SHA=$(git -C ../tashi-vertex-rs rev-parse HEAD)
-          TV_C_VER=$(sed -n 's/.*TASHI_VERTEX_VERSION "\([0-9.]*\)".*/\1/p' ../tashi-vertex-rs/CMakeLists.txt | head -n1)
+          # The pinning chain is two links now: this tag names the tashi-vertex
+          # version, and that crate names the engine release it downloads.
+          TV_VER=$(sed -n '/^name = "tashi-vertex"$/,/^version = /s/^version = "\(.*\)"/\1/p' \
+            vertex_core/Cargo.lock | head -n1)
+          TV_C_VER=$(cat engine_version.txt)
           {
             printf 'ROS 2 Jazzy install space (amd64): vertex_ros2_msgs, vertex_ros2, vertex_fleet, with libtashi-vertex.so bundled next to the binaries.\n\n'
             printf 'Built against:\n'
-            printf -- '- tashi-vertex-rs `%s`\n' "$TV_RS_SHA"
+            printf -- '- tashi-vertex `%s` (crates.io)\n' "$TV_VER"
             printf -- '- tashi-vertex-c `v%s`\n\n' "$TV_C_VER"
             printf 'Usage: extract into a workspace directory and `source install/setup.bash`. '
-            printf 'To build from source instead, pin these versions in `tessera.repos` (see CONSUMING.md and RELEASING.md).\n'
+            printf 'To build from source instead, check out this tag; the engine versions above are pinned by `vertex_core/Cargo.toml` (see CONSUMING.md and RELEASING.md).\n'
           } > release_notes.md
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \

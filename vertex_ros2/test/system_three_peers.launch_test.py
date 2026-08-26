@@ -44,7 +44,7 @@ def _load_peers():
     if not os.path.exists(PEERS_PATH):
         pytest.skip(
             f"{PEERS_PATH} missing — run test/gen_test_keys.sh first "
-            "(needs the tashi-vertex-rs key-generate example)."
+            "(uses vertex_core's key-generate example)."
         )
     with open(PEERS_PATH) as f:
         return json.load(f)

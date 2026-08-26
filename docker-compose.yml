@@ -12,9 +12,10 @@
 #   docker compose run --rm shell        # interactive shell, env sourced
 #   docker compose run --rm soak         # 10-min RSS soak (override: -e SOAK_SECONDS=120)
 #
-# Requires tashi-vertex-rs checked out as a sibling of this repo (it is the
-# `tashi-vertex` path dependency of vertex_core). tashi-vertex-c is optional —
-# mount it to skip CMake's release download (see the commented lines below).
+# Self-contained: `tashi-vertex` is pinned from crates.io and its build script
+# downloads the matching tashi-vertex-c release, so this repo is the only
+# checkout needed. tashi-vertex-c is optional — mount it to skip CMake's
+# release download (see the commented lines below).
 
 x-common: &common
   build:
@@ -27,7 +28,6 @@ x-common: &common
   entrypoint: ["bash", "/usr/local/bin/entrypoint.sh"]
   volumes:
     - .:/ws/src/tessera
-    - ../tashi-vertex-rs:/ws/src/tashi-vertex-rs
     # Mounted so entrypoint edits take effect without an image rebuild.
     - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
     # Optional: build against the local tashi-vertex-c instead of downloading.
@@ -45,7 +45,6 @@ services:
     command: ["test"]
     volumes:
       - .:/ws/src/tessera
-      - ../tashi-vertex-rs:/ws/src/tashi-vertex-rs
       - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       - build-cache:/ws/build
       - install-cache:/ws/install
@@ -60,7 +59,6 @@ services:
     command: ["build"]
     volumes:
       - .:/ws/src/tessera
-      - ../tashi-vertex-rs:/ws/src/tashi-vertex-rs
       - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       - build-cache:/ws/build
       - install-cache:/ws/install
@@ -85,7 +83,6 @@ services:
       - "9090:9090"
     volumes:
       - .:/ws/src/tessera
-      - ../tashi-vertex-rs:/ws/src/tashi-vertex-rs
       - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       - build-cache:/ws/build
       - install-cache:/ws/install

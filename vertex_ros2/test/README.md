@@ -15,12 +15,12 @@ workspace. They do **not** run in a plain `cargo test` sandbox.
 |---|---|
 | `system_three_peers.launch_test.py` | No publishes while `Inactive`; all 3 peers' `/vertex/event` streams byte-for-byte identical; lifecycle `configure→activate→deactivate→activate` without crash |
 | `soak.launch_test.py` | No unbounded memory growth under load (RSS bound after a 60 s warm-up) |
-| `gen_test_keys.sh` | Generates `fixtures/peers.json` (3 keypairs + bind addresses) using the tashi-vertex-rs `key-generate` example |
+| `gen_test_keys.sh` | Generates `fixtures/peers.json` (3 keypairs + bind addresses) using `vertex_core`'s `key-generate` example |
 
 ## Run
 
 ```console
-# 1. one-time: generate peer keys (point VERTEX_RS at the tashi-vertex-rs checkout)
+# 1. one-time: generate peer keys (no arguments; uses vertex_core's example)
 ./test/gen_test_keys.sh
 
 # 2. the multi-node test (part of `colcon test`)

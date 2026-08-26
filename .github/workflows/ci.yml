@@ -13,9 +13,9 @@ name: vertex_ros2 CI (Jazzy)
 #   * `soak`     — the 10-minute RSS-growth launch_test, on a nightly schedule,
 #                  plus the randomized mission soak (sim-soak).
 #
-# The workspace needs `tashi-vertex-rs` checked out as a sibling of this repo
-# (it is the `tashi-vertex` path dependency of vertex_core), so both repos are
-# checked out side by side and compose is run from the tessera checkout.
+# This repo is the only checkout needed: `vertex_core` pins `tashi-vertex` to
+# `=0.14.0` from crates.io, and that crate's build script downloads the
+# matching tashi-vertex-c release. No sibling, no PAT.
 #
 # Runner arch: `ubuntu-latest` is amd64; the local validation was arm64 (Apple
 # Silicon). Both work — the v0.14.0 tashi-vertex-c release ships both
@@ -48,16 +48,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: tessera
-
-      - name: Checkout tashi-vertex-rs (sibling path dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: tashigit/tashi-vertex-rs
-          path: tashi-vertex-rs
-          # tashi-vertex-rs is private. Authenticate with a read-scoped PAT
-          # (your account already has access) stored as the TASHI_VERTEX_RS_TOKEN
-          # secret on this repo. Defaults to the repo's default branch (v0.14.0).
-          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
 
       - name: Free disk space
         # The full ros2-rust build + ROS base image + GHA cache export overflows
@@ -99,13 +89,6 @@ jobs:
         with:
           path: tessera
 
-      - name: Checkout tashi-vertex-rs (sibling path dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: tashigit/tashi-vertex-rs
-          path: tashi-vertex-rs
-          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
-
       - name: Free disk space
         run: |
           df -h /
@@ -146,17 +129,10 @@ jobs:
         with:
           path: tessera
 
-      - name: Checkout tashi-vertex-rs (sibling path dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: tashigit/tashi-vertex-rs
-          path: tashi-vertex-rs
-          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
-
       - name: Install nightly Rust + Miri
         run: rustup toolchain install nightly --component miri --profile minimal
 
-      - name: Install CMake >= 4.2.3 (tashi-vertex-rs build.rs requirement)
+      - name: Install CMake >= 4.2.3 (tashi-vertex build.rs requirement)
         run: pipx install "cmake>=4.2.3"
 
       - name: Miri (pure modules)
@@ -175,13 +151,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: tessera
-
-      - name: Checkout tashi-vertex-rs (sibling path dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: tashigit/tashi-vertex-rs
-          path: tashi-vertex-rs
-          token: ${{ secrets.TASHI_VERTEX_RS_TOKEN }}
 
       - name: Free disk space
         # The full ros2-rust build + ROS base image + GHA cache export overflows

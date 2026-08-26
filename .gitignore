@@ -19,6 +19,9 @@ log/
 # vertex_ros2/test/gen_test_keys.sh)
 vertex_ros2/test/fixtures/
 
+# Release workflow scratch (engine version read back from the vendored crate)
+engine_version.txt
+
 # OS
 .DS_Store
 

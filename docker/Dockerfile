@@ -8,8 +8,9 @@
 #
 #   * Base `ros:jazzy` is multi-arch: on an M3 host Docker pulls the arm64
 #     variant and runs it NATIVELY (no x86 emulation).
-#   * `tashi-vertex-rs`'s CMake fetches the prebuilt `tashi-vertex-c` release and,
-#     on Linux/arm64, links `libtashi-vertex-arm64.so` — shipped in v0.14.0.
+#   * The `tashi-vertex` crate's CMake fetches the prebuilt `tashi-vertex-c`
+#     release and, on Linux/arm64, links `libtashi-vertex-arm64.so` — shipped
+#     in v0.14.0.
 #
 # This image carries only the *environment* (ROS + Rust + ros2-rust overlay +
 # colcon plugins + a modern CMake). The project source is bind-mounted at run
@@ -39,12 +40,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-psutil \
     && rm -rf /var/lib/apt/lists/*
 
-# --- modern CMake (tashi-vertex-rs requires >= 4.2.3) ------------------------
+# --- modern CMake (the tashi-vertex build requires >= 4.2.3) -----------------
 # Ubuntu 24.04 ships 3.28, too old. The pip wheel has manylinux aarch64 builds,
 # so this works on Apple Silicon. Installs to /usr/local/bin (ahead of /usr/bin).
 RUN pip3 install "cmake>=4.2.3" && cmake --version
 
-# --- Rust (tashi-vertex-rs is edition 2024 → needs rustc >= 1.85) ------------
+# --- Rust (tashi-vertex is edition 2024 → needs rustc >= 1.85) ---------------
 ENV RUSTUP_HOME=/opt/rust/rustup \
     CARGO_HOME=/opt/rust/cargo \
     PATH=/opt/rust/cargo/bin:$PATH
@@ -76,9 +77,9 @@ RUN . /opt/ros/jazzy/setup.sh \
     && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 
 # --- workspace mount point ---------------------------------------------------
-# docker-compose mounts the repos here at run time:
-#   /ws/src/tessera          (this repo)
-#   /ws/src/tashi-vertex-rs  (sibling crate; vertex_core's path dependency)
+# docker-compose mounts this repo here at run time:
+#   /ws/src/tessera          (the only checkout needed; tashi-vertex comes
+#                             from crates.io and fetches its own engine)
 WORKDIR /ws
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

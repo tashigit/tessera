@@ -113,7 +113,7 @@ so nothing here textually shows the engine:
    own keypair. `vertex_ros2` *is* tessera's ROS package (this repo),
    colcon-built inside the container.
 2. Crate chain inside each process:
-   `vertex_node (vertex_ros2) → vertex_core → tashi-vertex-rs →
+   `vertex_node (vertex_ros2) → vertex_core → tashi-vertex →
    libtashi-vertex.so`, the last being the actual **Tashi Vertex consensus
    engine** (hashgraph gossip-about-gossip + virtual voting).
 3. Each node binds a UDP socket (`vertex.bind_address`, 127.0.0.1:47611–47614

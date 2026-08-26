@@ -18,7 +18,7 @@
     --l3: #b58a2e;   /* application */
     --l2: #4f8a52;   /* adapter */
     --l1: #2b5d8a;   /* vertex_core */
-    --l0: #7a4f9e;   /* tashi-vertex-rs + C engine */
+    --l0: #7a4f9e;   /* tashi-vertex crate + C engine */
     --good: #1a7f37;
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
     --sans: "Avenir Next", "Segoe UI", -apple-system, "Helvetica Neue", sans-serif;
@@ -167,7 +167,7 @@
   <h1>Wiring Tashi Vertex into a new project at the crate level</h1>
   <p class="lede">Volumes 1 and 2 treat tessera's <code>vertex_node</code> as a black box behind ROS topics. This one opens the box: how the crates fit together, how to embed the engine in a plain Rust process with no ROS at all, and how to write your own middleware adapter the way <code>vertex_ros2</code> was written. Everything here comes from tessera's <code>vertex_core</code> crate and its real tests.</p>
   <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;<a href="concepts.html">Concepts and protocol design</a> &nbsp;→&nbsp; 2&nbsp;·&nbsp;<a href="fleet-api.html">The fleet API</a> (the default path for ROS&nbsp;2 projects) &nbsp;→&nbsp; 3&nbsp;·&nbsp;Crate-level internals (you are here). Come here when your process cannot be a ROS&nbsp;2 node, or you are building an adapter.</div>
-  <p class="kicker">You need: Rust (stable), CMake, and access to the <code>tessera</code> and <code>tashi-vertex-rs</code> repositories. No ROS required until section 5.</p>
+  <p class="kicker">You need: Rust (stable), CMake, and access to the <code>tessera</code> repository. No ROS required until section 5.</p>
 </header>
 
 <h2 id="stack">The stack: four layers, three places to plug in</h2>
@@ -230,11 +230,10 @@ c.shutdown()?;                            <span class="c">// -&gt; Finalized (no
 <div class="note">The controller always inserts <strong>yourself</strong> into the peer set, so <code>Config.peers</code> lists only the <em>other</em> nodes. Total session size is <code>peers.len() + 1</code>, and the BFT sizing rule from the first tutorial (n ≥ 3f + 1) applies to that total.</div>
 
 <h2 id="s1"><span class="stepno">Step 1</span>Workspace and build plumbing</h2>
-<p><code>vertex_core</code> depends on <code>tashi-vertex</code> as a <strong>path dependency</strong>, so the two repositories must sit side by side, and your project joins them:</p>
+<p><code>vertex_core</code> pins <code>tashi-vertex</code> to an exact version from crates.io, so tessera is the only checkout you need beside your own crate:</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 workspace/
 ├── tessera/            <span class="c"># vertex_core lives at tessera/vertex_core</span>
-├── tashi-vertex-rs/    <span class="c"># the Rust bindings; builds/downloads libtashi-vertex</span>
 └── my-fleet/           <span class="c"># your new crate</span>
 </pre></div>
 <div class="code"><span class="lang">toml — my-fleet/Cargo.toml</span><button class="copy">Copy</button><pre>
@@ -244,12 +243,13 @@ edition = <span class="s">"2021"</span>
 
 [dependencies]
 vertex_core = { path = <span class="s">"../tessera/vertex_core"</span> }
-tashi-vertex = { path = <span class="s">"../tashi-vertex-rs"</span> }   <span class="c"># for KeySecret / KeyPublic</span>
+tashi-vertex = <span class="s">"=0.14.0"</span>   <span class="c"># for KeySecret / KeyPublic</span>
 tokio = { version = <span class="s">"1"</span>, features = [<span class="s">"rt-multi-thread"</span>, <span class="s">"macros"</span>, <span class="s">"time"</span>] }
 </pre></div>
+<div class="note warn">Match <code>vertex_core</code>'s pinned version exactly. The engine handles are FFI types, so if cargo resolves two different <code>tashi-vertex</code> versions you get two incompatible copies of <code>KeySecret</code>, <code>Engine</code> and friends, and the mismatch surfaces as a type error rather than anything that hints at the real cause. The pin lives in <code>tessera/vertex_core/Cargo.toml</code>.</div>
 <p>Two build facts to know before your first <code>cargo build</code>:</p>
 <ul>
-  <li><strong>The C engine.</strong> <code>tashi-vertex-rs</code> builds against <code>libtashi-vertex</code> (the actual consensus engine, a C library). Its build downloads the release archive by default. To build against a local checkout instead, set <code>TASHI_VERTEX_LOCAL_BUILD=1</code> and point <code>TASHI_VERTEX_LOCAL_DIR</code> at it — the flag gates the local build, the path just tells it where to look, and setting the path alone leaves the flag off and the release download still happens. Tessera's Docker harness sets both automatically whenever <code>TASHI_VERTEX_LOCAL_DIR</code> is present (<code>docker/entrypoint.sh</code>).</li>
+  <li><strong>The C engine.</strong> <code>tashi-vertex</code> builds against <code>libtashi-vertex</code> (the actual consensus engine, a C library). Its build downloads the release archive pinned inside that crate version. To build against a local checkout instead, set <code>TASHI_VERTEX_LOCAL_BUILD=1</code> and point <code>TASHI_VERTEX_LOCAL_DIR</code> at it — the flag gates the local build, the path just tells it where to look, and setting the path alone leaves the flag off and the release download still happens. Tessera's Docker harness sets both automatically whenever <code>TASHI_VERTEX_LOCAL_DIR</code> is present (<code>docker/entrypoint.sh</code>).</li>
   <li><strong>The rpath problem.</strong> The bindings' build script adds an rpath only to <em>its own</em> binaries. Downstream binaries link <code>libtashi-vertex.so</code>/<code>.dylib</code> but cannot find it at runtime. <code>vertex_core</code> ships a <code>build.rs</code> that locates the library under the shared target directory and bakes an absolute rpath plus <code>$ORIGIN</code>-style fallbacks. Copy that <code>build.rs</code> into your crate, or export <code>LD_LIBRARY_PATH</code> the way tessera's <code>docker/entrypoint.sh</code> does (<code>export_tv_libpath</code>).</li>
 </ul>
 
@@ -336,7 +336,7 @@ controllers[2].submit(<span class="k">b</span><span class="s">"and node 2"</span
   <li><strong><code>Transaction</code> is move-only.</strong> Submission is allocate, copy, send, and the type system forbids double-send and double-free. This is also why tessera's Miri CI job covers the pure modules and leaves the FFI to the move-only guarantee.</li>
   <li><strong>Events are copied out eagerly.</strong> <code>EventRecord::from_event</code> clones every borrowed slice out of FFI-owned memory before the event is dropped, so nothing downstream ever touches engine memory.</li>
 </ul>
-<div class="note warn">If your plan was "just call <code>tashi-vertex-rs</code> directly from my async runtime", stop and reread the second bullet. The safe embedding is genuinely nontrivial, and it is exactly the part <code>vertex_core</code> has already solved and tested. Target the bindings directly only if you cannot take a Tokio dependency at all.</div>
+<div class="note warn">If your plan was "just call <code>tashi-vertex</code> directly from my async runtime", stop and reread the second bullet. The safe embedding is genuinely nontrivial, and it is exactly the part <code>vertex_core</code> has already solved and tested. Target the bindings directly only if you cannot take a Tokio dependency at all.</div>
 
 <h2 id="s5"><span class="stepno">Step 5</span>Writing your own adapter (the vertex_ros2 pattern)</h2>
 <p><code>vertex_ros2</code> is a worked example of wrapping <code>Controller</code> for a middleware, and it is thin by design: about three files. To adapt tessera to anything else (Zenoh, MQTT, gRPC, DDS without ROS), reproduce its five moves with your transport:</p>
@@ -397,7 +397,7 @@ std::thread::Builder::new().name(<span class="s">"event-pump"</span>.into()).spa
 <h2 id="checklist">Crate-level integration checklist</h2>
 <p class="kicker">Ticks persist while this page is open.</p>
 <ul class="checklist">
-  <li><input type="checkbox" id="k1"><label for="k1">Repos side by side, path dependencies resolve, cargo build passes</label></li>
+  <li><input type="checkbox" id="k1"><label for="k1">tashi-vertex pinned to the same version vertex_core pins, cargo build passes</label></li>
   <li><input type="checkbox" id="k2"><label for="k2">Runtime linking solved (build.rs rpath copied, or LD_LIBRARY_PATH exported)</label></li>
   <li><input type="checkbox" id="k3"><label for="k3">Identities generated and persisted as base58, loaded via Config::secret_from_base58</label></li>
   <li><input type="checkbox" id="k4"><label for="k4">Config lists only the other peers, literal IPs, heartbeat tuned for session size</label></li>
@@ -474,7 +474,7 @@ const LAYERS = [
     when: 'Target this layer when your process can be Rust: embed Controller directly, no ROS anywhere (sections 1 to 4).'
   },
   {
-    id: 'l0', color: 'var(--l0)', tag: 'engine', name: 'tashi-vertex-rs + libtashi-vertex',
+    id: 'l0', color: 'var(--l0)', tag: 'engine', name: 'tashi-vertex + libtashi-vertex',
     role: 'the consensus engine itself',
     what: ['Hashgraph-family aBFT: gossip about gossip, virtual voting', 'UDP transport, hole punching, dynamic epoch sizing', 'Rust bindings over the C library, move-only Transaction type'],
     when: 'Target directly only if you cannot take the vertex_core Tokio dependency. You then own every constraint in section 4 yourself.'
