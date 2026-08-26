@@ -5,11 +5,14 @@ name: vertex_ros2 CI (Jazzy)
 #   * `test`     — vertex_core cargo test + colcon build + the 3-node launch_test
 #                  (ordering byte-for-byte, no-publish-in-Inactive, lifecycle
 #                  cycle, clean shutdown).
-#   * `sim-test` — both simulation suites, headless (mock robots, no Webots):
-#                  route exploration (parallel exploration, fault injection,
-#                  lifecycle churn — vertex_ros2/test/simulation/README.md) and
+#   * `sim-test` — all three simulation suites, headless (mock robots, no
+#                  Webots): route exploration (parallel exploration, fault
+#                  injection, lifecycle churn — vertex_ros2/test/simulation/),
 #                  arena exploration (sector sweep with consensus health
-#                  gating — vertex_ros2/test/simulation_arena/README.md).
+#                  gating — vertex_ros2/test/simulation_arena/), and air/ground
+#                  survey-and-sweep (a mixed fleet of tessera bots and native
+#                  Rust drones, plus a Byzantine peer —
+#                  vertex_ros2/test/simulation_airground/).
 #   * `soak`     — the 10-minute RSS-growth launch_test, on a nightly schedule,
 #                  plus the randomized mission soak (sim-soak).
 #
@@ -78,9 +81,13 @@ jobs:
         run: docker compose run --rm test
 
   sim-test:
-    # Both simulation suites, headless (no Webots): route exploration (fsm
-    # unit tests + N1 exploration + N3 fault injection + N4 lifecycle churn)
-    # and arena exploration (fsm unit tests + the sector-sweep launch_test).
+    # All three simulation suites, headless (no Webots): route exploration
+    # (fsm unit tests + N1 exploration + N3 fault injection + N4 lifecycle
+    # churn), arena exploration (fsm unit tests + the sector-sweep
+    # launch_test), and air/ground (both folds' unit tests, the mixed-fleet
+    # launch_test, and the Byzantine lying-drone launch_test). The air tier is
+    # a native Rust binary rather than a colcon package, so the entrypoint
+    # cargo-builds it for the runner's arch first.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
@@ -111,7 +118,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Run simulation suite (exploration + fault injection + lifecycle churn)
+      - name: Run simulation suite (all three scenarios, headless)
         working-directory: tessera
         run: docker compose run --rm sim simtest
 

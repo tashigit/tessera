@@ -15,9 +15,12 @@ implementation.
 **Documentation:** a four-volume tutorial series lives in [`docs/`](docs/)
 (servable with GitHub Pages): concepts and protocol design, building on the
 `vertex_fleet` API, crate-level embedding, and porting a broker-based fleet.
-Consumers start at [`CONSUMING.md`](CONSUMING.md). Two worked examples ship in
-the repo: the [route-exploration simulation](vertex_ros2/test/simulation/) and
-the [arena-exploration port](vertex_ros2/test/simulation_arena/).
+Consumers start at [`CONSUMING.md`](CONSUMING.md). Three worked examples ship
+in the repo: the [route-exploration simulation](vertex_ros2/test/simulation/),
+the [arena-exploration port](vertex_ros2/test/simulation_arena/), and the
+[air/ground survey-and-sweep](vertex_ros2/test/simulation_airground/), where
+two ROS 2 robots and two native-Rust drones share one committee with no ROS on
+the drone side at all.
 
 ---
 

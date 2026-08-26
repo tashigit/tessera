@@ -11,6 +11,8 @@
 #   docker compose run --rm build        # colcon build the vertex_ros2 node
 #   docker compose run --rm shell        # interactive shell, env sourced
 #   docker compose run --rm soak         # 10-min RSS soak (override: -e SOAK_SECONDS=120)
+#   docker compose run --rm sim simtest  # all three simulations, headless
+#   docker compose run --rm --service-ports sim simairground   # simulation 3, live
 #
 # Self-contained: `tashi-vertex` is pinned from crates.io and its build script
 # downloads the matching tashi-vertex-c release, so this repo is the only
@@ -81,6 +83,11 @@ services:
     command: ["sim"]
     ports:
       - "9090:9090"
+      # The air/ground simulation's drones do not use rosbridge. Their
+      # Mac-side Webots controllers dial their air_agent directly over a
+      # JSON-lines TCP socket, one port each.
+      - "48633:48633"
+      - "48634:48634"
     volumes:
       - .:/ws/src/tessera
       - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro

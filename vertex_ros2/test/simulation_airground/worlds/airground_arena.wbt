@@ -1,0 +1,608 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/adept/pioneer3/protos/Pioneer3at.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/dji/mavic/protos/Mavic2Pro.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/devices/sick/protos/SickLms291.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/festo/robotino3/protos/Robotino3Webcam.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/DryMud.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/trees/protos/BigSassafras.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/trees/protos/Sassafras.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/trees/protos/Pine.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/rocks/protos/Rock.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/animals/protos/Deer.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/samples/robotbenchmark/pit_escape/protos/Pit.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/SandyGround.proto"
+
+WorldInfo {
+  # The Mavic 2 PRO's published control constants assume these. The arena
+  # world left WorldInfo empty, which is fine for Pioneers but leaves the
+  # drones unflyable: at the default 32 ms step with no damping the attitude
+  # loop oscillates and they tumble on takeoff.
+  basicTimeStep 8
+  defaultDamping Damping {
+    linear 0.5
+    angular 0.5
+  }
+}
+Viewpoint {
+  orientation 1 0 0 0.72
+  position 0 -42 48
+  follow ""
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  translation -0.24 0.17 0
+  floorSize 50 50
+  floorAppearance DryMud {
+    IBLStrength 0
+  }
+  wallThickness 0.05
+  wallHeight 1
+}
+Pit {
+  translation 7.52003 11.55 0.01
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(1)"
+}
+Pit {
+  translation -4.82 -1.19997 0.00999918
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(6)"
+}
+Pit {
+  translation -14.66 14.57 -0.05
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(7)"
+}
+Pit {
+  translation -10.79 8.68 0.01
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(15)"
+}
+Pit {
+  translation -14.48 8.68 0.01
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(16)"
+}
+Pit {
+  translation -14.66 -5.54 -0.020001
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(14)"
+}
+Pit {
+  translation -4.62 -14.71 0.00999818
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(12)"
+}
+Pit {
+  translation -15.01 -14.71 -0.050002
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(13)"
+}
+Pit {
+  translation -0.11 -14.78 -0.090002
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(11)"
+}
+Pit {
+  translation -4.81996 14.57 0.0100002
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(8)"
+}
+Pit {
+  translation -0.20001 -12.63 0.00999796
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(9)"
+}
+Pit {
+  translation -4.81999 6.93003 0.00999999
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(10)"
+}
+Pit {
+  translation 7.52 -4.80997 0.00999882
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(5)"
+}
+Pit {
+  translation 14.6901 14.51 0.01
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  xDimension 100
+  yDimension 100
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  pitRadius 4
+  name "pit(4)"
+}
+Pit {
+  translation 14.69 -0.41 -0.100001
+  rotation -0.01854570025433118 -2.914190039964487e-08 0.9998280137113961 -5.307179586466759e-06
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  pitRadius 5
+  name "pit(3)"
+}
+Pit {
+  translation 14.7 -15.13 0.06
+  rotation 0 0 1 1.5708
+  appearance SandyGround {
+    colorOverride 1 0.9 0.8
+    textureTransform TextureTransform {
+      scale 5 5
+    }
+  }
+  perlinNOctaves 8
+  noiseAmplitude 0.1
+  name "pit(2)"
+}
+Deer {
+  translation -14.5637 9.62631 1.13
+  rotation 0 0 1 1.5708
+}
+Deer {
+  translation 11.7906 5.00848 1.05
+  rotation 0 0 1 1.309
+  name "deer(1)"
+}
+Deer {
+  translation -13.3344 10.7777 1.22
+  rotation 0 0 1 1.309
+  name "deer(2)"
+}
+Deer {
+  translation -14.2506 10.8362 1.13
+  rotation 0 0 1 2.3562
+  name "deer(3)"
+}
+Pine {
+  translation -17.19 17.94 0
+}
+Pine {
+  translation -6.58 15.95 0
+  name "pine tree(1)"
+}
+Pine {
+  translation -14.04 23.93 0
+  name "pine tree(2)"
+}
+Pine {
+  translation 0 19.99 0
+  name "pine tree(3)"
+}
+Pine {
+  translation 4.53 17.81 0
+  name "pine tree(4)"
+}
+Pine {
+  translation -4.12 17.91 0
+  name "pine tree(5)"
+}
+Pine {
+  translation -14.28 11.74 0.71
+  name "pine tree(6)"
+}
+Pine {
+  translation -20.81 20.22 0
+  name "pine tree(7)"
+}
+Pine {
+  translation -2.9 21.69 0
+  name "pine tree(8)"
+}
+Pine {
+  translation -13.1586 17.7479 0.87
+  rotation 0 0 1 -0.785395307179586
+  name "pine tree(9)"
+}
+Pine {
+  translation -8.87807 20.2701 0
+  rotation 0 0 1 0.261799
+  name "pine tree(10)"
+}
+Sassafras {
+  translation 9.98 -13.69 0
+  rotation 0 0 1 1.0472
+  name "sassafras tree(13)"
+}
+Sassafras {
+  translation -7.75 2.77 0.64
+  rotation 1 0 0 -0.261795307179586
+  name "sassafras tree(14)"
+}
+Sassafras {
+  translation 10.24 4.87 0.92
+  name "sassafras tree(15)"
+}
+Sassafras {
+  translation 0 -14.08 0.57
+  name "sassafras tree(16)"
+}
+Sassafras {
+  translation -2.04 -5.43 0
+  name "sassafras tree(17)"
+}
+Sassafras {
+  translation 0 5.03 0
+  name "sassafras tree(18)"
+}
+Sassafras {
+  translation -10.48 -13.69 0
+  rotation 0 0 1 -2.8797953071795863
+  name "sassafras tree(19)"
+}
+BigSassafras {
+  translation 4.58 -20.44 0
+  rotation 0 0 1 2.87979
+}
+BigSassafras {
+  translation 19.7232 12.3647 0.89
+  rotation 0 0 1 -2.6179953071795863
+  name "sassafras tree(1)"
+}
+BigSassafras {
+  translation -18.8 -3.3 0.67
+  name "sassafras tree(11)"
+}
+BigSassafras {
+  translation 8.35 12.21 0
+  rotation 0 0 1 1.8326
+  name "sassafras tree(12)"
+}
+BigSassafras {
+  translation -14.68 5.41 1
+  name "sassafras tree(9)"
+}
+BigSassafras {
+  translation -10.4049 13.0824 0.869418
+  rotation 0.2205131090813569 -0.12731306297803213 -0.9670394783660207 1.07646
+  name "sassafras tree(10)"
+}
+BigSassafras {
+  translation 4.75178 20.5166 0
+  rotation -0.16230503964057622 -0.021368005218815395 0.9865092409401138 1.84569
+  name "sassafras tree(2)"
+}
+BigSassafras {
+  translation 16.855 -2.92463 0.58
+  rotation 0 0 1 1.309
+  name "sassafras tree(3)"
+}
+BigSassafras {
+  translation -1.23891 1.41417 0
+  rotation 0 0 1 1.0472
+  name "sassafras tree(4)"
+}
+BigSassafras {
+  translation -4.20978 -3.506 0.78
+  rotation 0 0 -1 -0.2618053071795865
+  name "sassafras tree(5)"
+}
+BigSassafras {
+  translation 14.661 -10.9 0
+  rotation 0 0 1 1.0472
+  name "sassafras tree(6)"
+}
+BigSassafras {
+  translation 0 12.88 -1.39
+  rotation 0 0 1 -0.785395307179586
+  name "sassafras tree(7)"
+}
+BigSassafras {
+  translation 11.49 -3.19 -2.87
+  rotation 0 0 1 1.5708
+  name "sassafras tree(8)"
+}
+DEF BOT_1 Pioneer3at {
+  translation -23 -6.0 0.11
+  rotation 0 0 1 0
+  name "bot_1"
+  controller "pioneer_sweeper"
+  extensionSlot [
+    GPS {
+    }
+    InertialUnit {
+    }
+    Robotino3Webcam {
+      translation 0.167348 -0.0001553 0.21
+      rotation -0.15222928589302986 -0.15222928589302986 0.9765513243209476 1.5708
+    }
+    SickLms291 {
+      translation 0.17 0 0.32
+    }
+  ]
+}
+DEF BOT_0 Pioneer3at {
+  translation -23 -12.0 0.11
+  rotation 0 0 1 0
+  name "bot_0"
+  controller "pioneer_sweeper"
+  extensionSlot [
+    GPS {
+    }
+    InertialUnit {
+    }
+    Robotino3Webcam {
+      translation 0.163776 -7.26422e-05 0.200741
+      rotation -0.15222928589302986 -0.15222928589302986 0.9765513243209476 1.5708
+    }
+    SickLms291 {
+      translation 0.17 0 0.32
+    }
+  ]
+}
+Rock {
+  translation 9.06 7.08 0.77
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 19.4574 -1.83278 0.77
+  rotation 0 0 1 -0.523595307179586
+  name "rock(1)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 17.9463 4.79 0.77
+  rotation 0 0 1 1.0472
+  name "rock(2)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 8.455 -2.48943 0.77
+  rotation 0 0 1 1.0472
+  name "rock(3)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 18.5085 4.30376 1.17752
+  rotation -0.23617395383496365 0.4090639200400788 0.8814128277098107 1.15981
+  name "rock(4)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 14.8645 6.57 0.77
+  rotation 0 0 1 1.0472
+  name "rock(5)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 2.07022 -0.627726 0.02
+  rotation 0 0 1 -1.5707953071795862
+  name "rock(6)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 18.4455 3.97593 0.77
+  rotation 0 0 1 -0.785395307179586
+  name "rock(7)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 19.1252 4.11 0.77
+  rotation 0 0 -1 -0.2618053071795865
+  name "rock(8)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 18.3233 5.3229 0.77
+  rotation 0 0 1 1.0472
+  name "rock(9)"
+  type "flat"
+  scale 5
+}
+Rock {
+  translation 10.368 9.165 0.77
+  rotation 0 0 1 1.0472
+  name "rock(10)"
+  type "flat"
+  scale 5
+}
+
+DEF DRONE_0 Mavic2Pro {
+  translation -20 -15 0.1
+  rotation 0 0 1 0
+  name "drone_0"
+  controller "mavic_surveyor"
+  bodySlot [
+    # Downward ranger: the reason the air tier exists. A Pioneer's Sick LMS 291
+    # is horizontal and cannot see a hole, so the arena's craters are invisible
+    # from the ground. From above, a pit reads as ground that is further away
+    # than the drone's altitude, which is a crisp geometric signal rather than
+    # a vision problem. Mounted in bodySlot, an MFNode that sits directly in
+    # the proto's Robot.children, so no derived proto is needed.
+    DistanceSensor {
+      name "ground_ranger"
+      translation 0 0 -0.05
+      rotation 0 1 0 1.5708          # point straight down (-Z)
+      type "laser"
+      numberOfRays 3
+      aperture 0.05
+      lookupTable [
+        0    0    0
+        40   40   0.002
+      ]
+    }
+  ]
+}
+DEF DRONE_1 Mavic2Pro {
+  translation 16 9 0.1
+  rotation 0 0 1 0
+  name "drone_1"
+  controller "mavic_surveyor"
+  bodySlot [
+    # Downward ranger: the reason the air tier exists. A Pioneer's Sick LMS 291
+    # is horizontal and cannot see a hole, so the arena's craters are invisible
+    # from the ground. From above, a pit reads as ground that is further away
+    # than the drone's altitude, which is a crisp geometric signal rather than
+    # a vision problem. Mounted in bodySlot, an MFNode that sits directly in
+    # the proto's Robot.children, so no derived proto is needed.
+    DistanceSensor {
+      name "ground_ranger"
+      translation 0 0 -0.05
+      rotation 0 1 0 1.5708          # point straight down (-Z)
+      type "laser"
+      numberOfRays 3
+      aperture 0.05
+      lookupTable [
+        0    0    0
+        40   40   0.002
+      ]
+    }
+  ]
+}

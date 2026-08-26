@@ -211,6 +211,21 @@ case "${1:-test}" in
     echo "    On the host: open vertex_ros2/test/simulation_arena/worlds/pioneer_arena.wbt in Webots."
     ros2 launch "${TESSERA}/vertex_ros2/test/simulation_arena/arena_exploration.launch.py"
     ;;
+  simairground)
+    # Air/ground simulation (simulation 3), container side. Webots runs
+    # NATIVELY on the host with worlds/airground_arena.wbt; this serves
+    # rosbridge + 2x vertex_node + 2x ground_coordinator for the sweepers,
+    # and 2x air_agent (native Rust, no ROS) for the drones. Run with:
+    #   docker compose run --rm --service-ports sim simairground
+    build_ros
+    export_tv_libpath
+    build_air_agent
+    gen_peers_airground
+    echo "==> simairground: rosbridge (9090) + 2x vertex_node + 2x ground_coordinator"
+    echo "                  + 2x air_agent (drone links on 48633/48634)"
+    echo "    On the host: open vertex_ros2/test/simulation_airground/worlds/airground_arena.wbt in Webots."
+    ros2 launch "${AIRGROUND}/airground.launch.py"
+    ;;
   simsoak)
     # Randomized back-to-back mission soak (N5). SOAK_SECONDS overrides length.
     build_ros
