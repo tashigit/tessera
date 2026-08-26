@@ -32,3 +32,6 @@ vertex_ros2/test/simulation/worlds/.*.wbproj
 vertex_ros2/test/simulation_arena/fixtures/peers5.json
 vertex_ros2/test/simulation_arena/logs/
 vertex_ros2/test/simulation_arena/worlds/.*.wbproj
+vertex_ros2/test/simulation_airground/fixtures/peers_airground.json
+vertex_ros2/test/simulation_airground/logs/
+vertex_ros2/test/simulation_airground/worlds/.*.wbproj
