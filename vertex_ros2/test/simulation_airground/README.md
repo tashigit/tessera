@@ -198,10 +198,40 @@ surveys, in a world that has none:
 | The lies are recorded | every fabricated cell is in the log, witnessed by the liar alone |
 | Honest work unaffected | all 6 blocks still surveyed |
 
-The mirror case, a drone reporting a real pit as clear, is covered by the
-main test: there the bot that drives into the hole is itself the second
-witness. Between the two, one lying drone can neither invent an obstacle nor
-hide one.
+`false_clear.launch_test.py` is the mirror case, and the more dangerous one.
+`drone_1` runs with `--conduct false-clear`: it flies over a real crater, its
+ranger sees it, and it reports the block clean anyway.
+
+Inventing a hazard is cheap to defend against, because nobody corroborates a
+fiction. Hiding one is not, because the fleet has no reason to doubt a clear
+report and the ground tier is blind to exactly this kind of obstacle. So the
+defence cannot be "detect the lie". It is that the truth arrives anyway, from
+the other tier:
+
+| Property | Pass condition |
+|---|---|
+| The lie really lands | no drone ever witnesses the crater, though both flew over it |
+| The truth arrives anyway | the ground tier witnesses it, and no sector is left unexamined |
+| Coverage still completes | every reachable sector swept, every sector resolved |
+| Agreement holds | both bots reach the same verdict about the hidden crater |
+
+The liar's own journal is the clearest evidence that the conduct is real
+rather than a drone that simply missed something. It reads:
+
+```
+DECIDE surveyed B02, 1 sighting(s)
+```
+
+Its ranger saw the crater. It reported the block clean regardless. The fold
+ends the run with `{"S05": ["bot_0", "bot_1"]}`: no air witness at all, the
+crater condemned by the two robots that could not cross it.
+
+The cost of the lie is worth stating precisely: one robot's time, and a sector
+that took a physical attempt to condemn instead of a 12 m flyover. What the
+lie cannot do is corrupt the shared map or stall the mission.
+
+Between the two tests, one lying drone can neither invent an obstacle nor hide
+one.
 
 The fold itself has 29 pure-Python unit tests in
 `nodes/test_airground_fsm.py` and 13 Rust tests in `air_agent/src/`.
@@ -221,6 +251,7 @@ python3 nodes/test_airground_fsm.py
 (cd air_agent && cargo test)
 launch_test airground.launch_test.py
 launch_test lying_drone.launch_test.py
+launch_test false_clear.launch_test.py
 ```
 
 There is also an air-tier-only smoke test that needs no ROS and no Docker,
@@ -281,12 +312,21 @@ the 16 procedural pit meshes. Later loads are much faster (assets cache under
    air tier reports it surveyed.
 3. As each block is surveyed the sectors under it become claimable and the
    Pioneers start sweeping, steering around trees and rocks on lidar.
-4. A Pioneer sent toward a crater drives to the rim and stops making
-   progress. After `stall_sec` it reports `abandon`, and `corroborate` if a
-   drone had already flagged that cell. That second witness condemns the
-   sector, and the fleet finishes without it.
-5. Done when every block is surveyed and every sector is explored or
-   condemned.
+4. Flagged sectors go last. A hazard with one witness is a preference, not a
+   veto, so the bots clear everything else first and give a second witness
+   time to arrive.
+5. A Pioneer eventually attempts the flagged sector and drives into the
+   crater. It does not report the sector explored even once it is within
+   `cover_radius` of the centre, because it is below grade and falling in is
+   not coverage. Unable to climb out, after `immobilized_sec` it reports
+   `corroborate` for the sector it is stuck in and stops claiming. That is the
+   second witness, so the sector is condemned, and the bot degrades the fleet
+   rather than starving it.
+6. Sectors blocked by something other than a crater get condemned too, just
+   more slowly: a tree cluster stops a Pioneer without any drone seeing it, so
+   it takes `max_attempts` failures from each of two bots.
+7. Done when every block is surveyed and every sector is explored or
+   condemned. Expect a bot to finish the run sitting in the crater.
 
 Watch the shared state live from any agent:
 
@@ -384,14 +424,23 @@ tail -1 logs/drone_0_airground.log
   flying a drone transect, ground height across that arena ran +0.40 to
   +1.14 m and never went negative. A horizontal lidar sees a berm, so the
   premise of this whole scenario had no physical basis there. One elevation
-  grid with a real 2.5 m crater replaces the flat floor and all sixteen pits,
-  and is ~60x cheaper in collision triangles into the bargain. Everything
-  else, trees rocks deer and footprint, is the arena's.
-- **A crater worth warning about will swallow a Pioneer.** It does: the bot
-  that confirms S05 ends up in it. The coordinator's `immobilized_sec` guard
-  makes a stuck bot stop claiming, so it degrades the fleet instead of
-  starving it, and the other bot finishes. This is why there is one crater and
-  not several: two craters can cost both bots.
+  grid with one real crater replaces the flat floor and all sixteen pits, and
+  is ~60x cheaper in collision triangles into the bargain. Everything else,
+  trees rocks deer and footprint, is the arena's.
+- **The crater is sized against `cover_radius`, not just for depth.** It is
+  3 m deep over a 4.5 m radius. The radius is the subtle half: a bot credits a
+  sector once it is within `cover_radius` (2 m) of the centre, so a crater
+  narrower than that ring gets reported explored from flat ground and never
+  met at all. It has to be WIDER than the credit radius. The depth and the
+  46 degree walls are the other half, because at 30 degrees a Pioneer simply
+  drives through.
+- **A crater worth warning about will swallow a Pioneer**, and no profile
+  avoids that: any bowl a robot can fall into is one it can drive to the
+  middle of. So the bot does fall in, refuses to credit the sector while below
+  grade, and reports being immobilized. The `immobilized_sec` guard then stops
+  it claiming, so it degrades the fleet instead of starving it. That is also
+  why there is one crater and not several: two can cost both bots, and the
+  sweep never finishes.
 - **Battery is a software model**, not the Mavic proto's `battery` field, so
   the `rtb` lease fires at reproducible times in both the live world and the
   headless mock.

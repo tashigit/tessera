@@ -196,8 +196,10 @@ case "${1:-test}" in
     ( cd "${AIRGROUND}/air_agent" && cargo test )
     echo "==> launch_test: air/ground survey-and-sweep (2x tessera bot + 2x Rust drone)"
     launch_test "${AIRGROUND}/airground.launch_test.py"
-    echo "==> launch_test: the lying drone (corroboration under a Byzantine peer)"
+    echo "==> launch_test: the lying drone (invents hazards that are not there)"
     launch_test "${AIRGROUND}/lying_drone.launch_test.py"
+    echo "==> launch_test: false clear (hides a hazard that is)"
+    launch_test "${AIRGROUND}/false_clear.launch_test.py"
     ;;
   simarena)
     # Arena-exploration simulation (simulation 2), container side. Webots runs
