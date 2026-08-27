@@ -87,7 +87,8 @@ jobs:
     # launch_test), and air/ground (both folds' unit tests, the mixed-fleet
     # launch_test, and the Byzantine lying-drone launch_test). The air tier is
     # a native Rust binary rather than a colcon package, so the entrypoint
-    # cargo-builds it for the runner's arch first.
+    # cargo-builds it for the runner's arch first. The viewer's JavaScript
+    # fold is checked here on the runner, outside the image.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
@@ -95,6 +96,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: tessera
+
+      # The air/ground fold exists in three languages: Python for the bots,
+      # Rust for the drones, JavaScript so the viewer can decode /vertex/event
+      # itself. All three replay fixtures/conformance.json. The first two run
+      # inside the Jazzy image via the entrypoint; this one runs here instead,
+      # because the image has no Node and adding one for a single test costs
+      # more than it saves. Runs before the image build so a fold divergence
+      # fails in seconds rather than after a full colcon build.
+      - name: Conformance — the viewer's JavaScript fold
+        working-directory: tessera/vertex_ros2/test/simulation_airground/viewer
+        run: node airground_fold.test.js
 
       - name: Free disk space
         run: |
