@@ -93,6 +93,16 @@
   .matrixTable td.rowHead, .matrixTable th.rowHead { text-align: left; color: var(--dim); }
   .matrixTable td.disagree { box-shadow: inset 0 0 0 2px var(--bad); }
   .note { color: var(--dim); font-size: 11px; font-style: italic; }
+  #inspect { border-top: 1px solid var(--border); padding: 8px 10px;
+             font-size: 11.5px; background: #0f1420; }
+  #inspect h4 { margin: 0 0 6px; font-size: 12px; color: var(--text); }
+  #inspect .hint { color: var(--dim); font-style: italic; }
+  #inspect .row { display: flex; gap: 6px; padding: 2px 0; line-height: 1.45; }
+  #inspect .k { color: var(--dim); width: 84px; flex-shrink: 0; }
+  #inspect .v { flex: 1; }
+  .who { font-weight: 600; }
+  .contrib { color: var(--dim); font-size: 10.5px; margin-top: 2px;
+             font-family: ui-monospace, monospace; }
 </style>
 </head>
 <body>
@@ -133,6 +143,8 @@
     <div class="agents" id="bots"></div>
     <div class="tierHead">Air tier — native Rust, no ROS</div>
     <div class="agents" id="drones"></div>
+    <div id="inspect"><h4>Sector detail</h4>
+      <div class="hint">Click a sector on the map to see who did what to it.</div></div>
     <div id="feedHead">Consensus feed (/vertex/event, decoded here)</div>
     <div id="feed"></div>
   </div>
@@ -298,6 +310,22 @@ function resizeCanvas() {
 }
 window.addEventListener("resize", resizeCanvas);
 
+let selected = null;
+canvas.addEventListener("click", (e) => {
+  const r = canvas.getBoundingClientRect();
+  const tr = transform();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  let hit = null;
+  for (const sid of geom.ids) {
+    const [cx, cy] = geom.centers[sid];
+    const [sx, sy] = tr.toScreen(cx, cy);
+    const w = tr.scale * CONFIG.cellW / 2, h = tr.scale * CONFIG.cellH / 2;
+    if (mx >= sx - w && mx <= sx + w && my >= sy - h && my <= sy + h) { hit = sid; break; }
+  }
+  selected = hit === selected ? null : hit;
+  renderInspector();
+});
+
 function transform() {
   const minX = CONFIG.gridMinX, maxX = minX + CONFIG.gridNx * CONFIG.cellW;
   const minY = CONFIG.gridMinY, maxY = minY + CONFIG.gridNy * CONFIG.cellH;
@@ -378,6 +406,10 @@ function render() {
     ctx.setLineDash(dashed ? [5, 4] : []);
     ctx.fillRect(x0, y0, w, h); ctx.strokeRect(x0, y0, w, h);
     ctx.setLineDash([]);
+    if (sid === selected) {
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3;
+      ctx.strokeRect(x0 + 2, y0 + 2, w - 4, h - 4);
+    }
 
     ctx.fillStyle = explored.has(sid) ? "#0b0e14" : "#9099ab";
     ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "left";
@@ -505,6 +537,19 @@ function agentCard(a, roleText, subText, healthy) {
   const role = document.createElement("div"); role.className = "role"; role.textContent = roleText;
   const sub = document.createElement("div"); sub.className = "sub"; sub.textContent = subText;
   info.appendChild(role); info.appendChild(sub);
+  const c = fold.contrib[a];
+  if (c) {
+    const line = document.createElement("div");
+    line.className = "contrib";
+    // What this agent has actually contributed to the log, not what it holds.
+    const parts = isDrone(a)
+      ? [[c.surveyed, "surveyed"], [c.sighted, "sighted"],
+         [c.corroborated, "corrob"], [c.rtb, "rtb"], [c.claimsLost, "lost"]]
+      : [[c.explored, "explored"], [c.abandoned, "gave up"],
+         [c.sighted + c.corroborated, "witnessed"], [c.claimsLost, "lost"]];
+    line.textContent = parts.filter(([n]) => n).map(([n, k]) => `${n} ${k}`).join(" · ") || "nothing yet";
+    info.appendChild(line);
+  }
   card.appendChild(id); card.appendChild(health); card.appendChild(info);
   return card;
 }
@@ -661,6 +706,97 @@ function renderMatrices() {
 }
 setInterval(renderMatrices, 300);
 
+// ---- sector inspector: the story of one sector, from the fold's provenance ----
+// State says WHAT a sector is. This says HOW it got there, and who did it:
+// which drone surveyed it, which bots raced for the claim and who won, how
+// many times each gave up, who witnessed a hazard, who finally covered it.
+function renderInspector() {
+  const el = document.getElementById("inspect");
+  el.innerHTML = "";
+  const h = document.createElement("h4");
+  h.textContent = selected ? `Sector ${selected}` : "Sector detail";
+  el.appendChild(h);
+
+  if (!selected) {
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = "Click a sector on the map to see who did what to it.";
+    el.appendChild(hint);
+    return;
+  }
+
+  const row = (k, node) => {
+    const d = document.createElement("div"); d.className = "row";
+    const kk = document.createElement("div"); kk.className = "k"; kk.textContent = k;
+    const vv = document.createElement("div"); vv.className = "v";
+    if (typeof node === "string") vv.textContent = node; else vv.appendChild(node);
+    d.appendChild(kk); d.appendChild(vv); el.appendChild(d);
+  };
+  const who = (agent, extra) => {
+    const span = document.createElement("span");
+    const a = document.createElement("span");
+    a.className = "who"; a.style.color = colorOf(agent); a.textContent = agent;
+    span.appendChild(a);
+    if (extra) span.appendChild(document.createTextNode(" " + extra));
+    return span;
+  };
+
+  // Which block contains it, and therefore which drone was responsible.
+  const bid = blockGeom.ids.find((b) => (blockGeom.cells[b] || []).includes(selected));
+  const st = fold.story[selected] || { claims: [], abandons: {}, hazards: [] };
+
+  row("block", bid ? `${bid} (${(blockGeom.cells[bid] || []).join(", ")})` : "—");
+  row("surveyed by", st.surveyedBy ? who(st.surveyedBy, "from the air") : "not yet surveyed");
+
+  if (st.claims.length) {
+    const box = document.createElement("div");
+    for (const c of st.claims) {
+      const line = document.createElement("div");
+      line.appendChild(who(c.agent, c.won ? "claimed it" : "tried, lost the race"));
+      if (!c.won) line.style.opacity = "0.6";
+      box.appendChild(line);
+    }
+    row("claims", box);
+  } else {
+    row("claims", "none");
+  }
+
+  const ab = Object.entries(st.abandons);
+  if (ab.length) {
+    const box = document.createElement("div");
+    for (const [a, n] of ab) {
+      const line = document.createElement("div");
+      line.appendChild(who(a, `gave up ${n}x (no progress)`));
+      box.appendChild(line);
+    }
+    row("abandoned", box);
+  }
+
+  if (st.hazards.length) {
+    const box = document.createElement("div");
+    st.hazards.forEach((a, i) => {
+      const line = document.createElement("div");
+      line.appendChild(who(a, i === 0 ? "sighted a hazard (provisional)"
+                                      : "corroborated it (CONFIRMED)"));
+      box.appendChild(line);
+    });
+    row("hazard", box);
+    row("verdict", fold.confirmedHazards.has(selected)
+      ? "condemned — two distinct witnesses"
+      : "deferred — one witness, needs a second");
+  }
+
+  if (st.exploredBy) row("explored by", who(st.exploredBy, "reached the centre"));
+
+  const outcome = fold.unreachable.has(selected) ? "condemned"
+                : fold.explored.has(selected) ? "explored"
+                : selected in fold.claimed ? "claimed, in progress"
+                : fold.surveyed.has(selected) ? "surveyed, free"
+                : "unsurveyed — no bot may claim it";
+  row("now", outcome);
+}
+setInterval(() => { if (selected) renderInspector(); }, 500);
+
 function setStatus(s) {
   const el = document.getElementById("status");
   el.className = s; el.textContent = s;
@@ -707,6 +843,7 @@ document.getElementById("connectBtn").addEventListener("click", () => {
   blockGeom = makeBlocks(CONFIG.gridNx, CONFIG.gridNy, CONFIG.blockW, CONFIG.blockH);
   fold = new AirGroundFold(geom.ids, blockGeom.ids, blockGeom.cells);
   feedEl.innerHTML = "";
+  selected = null; renderInspector();
   for (const k of Object.keys(botPose)) delete botPose[k];
   for (const k of Object.keys(botMission)) delete botMission[k];
   for (const k of Object.keys(dronePose)) delete dronePose[k];
@@ -719,6 +856,7 @@ document.getElementById("connectBtn").addEventListener("click", () => {
 
 resizeCanvas();
 requestAnimationFrame(render);
+renderInspector();
 renderAgents();
 renderMatrices();
 </script>

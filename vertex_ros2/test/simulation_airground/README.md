@@ -308,10 +308,31 @@ open vertex_ros2/test/simulation_airground/viewer/airground_viewer.html
 ```
 
 It shows what the arena's viewer cannot: a fleet split across two tiers. Air
-blocks are drawn as a backdrop under the ground sectors; unsurveyed sectors
-are dark, so the cross-tier gate is visible as the map fills in behind the
-drones; and every hazard is badged with its witness count, amber at one and
+blocks are drawn as a backdrop under the ground sectors, unsurveyed sectors
+are dark so the cross-tier gate is visible as the map fills in behind the
+drones, and every hazard is badged with its witness count, amber at one and
 red at two.
+
+**Click any sector** for its provenance. State tells you what a sector is; the
+inspector tells you how it got there and who did it. Which drone surveyed it,
+which bots raced for the claim and which lost, how many times each gave up,
+who witnessed a hazard and in what order, who finally reached the centre. A
+typical sector reads:
+
+```
+block        B00 (S00, S01)
+surveyed by  drone_0 from the air
+claims       bot_0 tried, lost the race     <- before the survey landed
+             bot_0 claimed it
+             bot_1 tried, lost the race
+explored by  bot_0 reached the centre
+now          explored
+```
+
+Each agent card also carries a running tally of what it has actually
+contributed to the log, which is a different question from what it currently
+holds: surveys flown and hazards sighted for a drone, sectors covered and
+given up for a bot, claims lost for either.
 
 Two things about the drones are worth knowing. Their **agents** publish
 nothing to ROS at all, which is the scenario's whole claim, so their column in

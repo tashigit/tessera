@@ -25,6 +25,14 @@ class AirGroundFold {
   }
 
   wipe() {
+    // Provenance: WHO did what to each sector and block. Deliberately kept
+    // out of snapshot(), which is the cross-language contract pinned by
+    // fixtures/conformance.json and must stay byte-comparable with the Python
+    // and Rust folds. This is viewer-only narration derived from the same
+    // records, not shared state.
+    this.story = {};              // sector -> {surveyedBy, claims[], abandons{}, hazards[], exploredBy}
+    this.blockStory = {};         // block  -> {claims[], surveyedBy, sightings[]}
+    this.contrib = {};            // agent  -> counters
     this.blockClaims = {};        // block -> drone
     this.surveyedBlocks = new Set();
     this.surveyed = new Set();    // sectors cleared for the ground tier
@@ -38,6 +46,23 @@ class AirGroundFold {
     this.unhealthy = new Set();
     this.healthSeq = {};
     this.phase = "surveying";
+  }
+
+  _sec(id) {
+    return (this.story[id] ||= { surveyedBy: null, claims: [], abandons: {},
+                                 hazards: [], exploredBy: null });
+  }
+
+  _blk(id) {
+    return (this.blockStory[id] ||= { claims: [], surveyedBy: null, sightings: [] });
+  }
+
+  _tally(agent, key) {
+    if (!agent) return;
+    const c = (this.contrib[agent] ||= { surveyed: 0, sighted: 0, explored: 0,
+                                         abandoned: 0, corroborated: 0, rtb: 0,
+                                         claimsWon: 0, claimsLost: 0 });
+    c[key] = (c[key] || 0) + 1;
   }
 
   /** Epoch gate and reset, mirroring vertex_fleet.ReplicatedState.apply. */
@@ -68,10 +93,16 @@ class AirGroundFold {
       case "corroborate":  return this.hazard(a, rec.cell);
       case "claim":        return this.claim(a, rec.sector);
       case "explored":     return this.exploredOp(a, rec.sector);
-      case "abandon":
+      case "abandon": {
         if (a != null && this.claimed[rec.sector] === a) delete this.claimed[rec.sector];
+        if (a != null && rec.sector != null) {
+          const ab = this._sec(rec.sector).abandons;
+          ab[a] = (ab[a] || 0) + 1;
+          this._tally(a, "abandoned");
+        }
         return;
-      case "rtb":          return this.rtb(a);
+      }
+      case "rtb":          this._tally(a, "rtb"); return this.rtb(a);
       case "ready":        if (a != null) this.grounded.delete(a); return;
       case "health":       return this.health(a, rec.seq, !!rec.ok);
       case "suspect":      return this.suspect(rec.victim, rec.seen_seq);
@@ -89,6 +120,8 @@ class AirGroundFold {
       && !this.surveyedBlocks.has(block)
       && !(block in this.blockClaims)
       && !Object.values(this.blockClaims).includes(agent);
+    this._blk(block).claims.push({ agent, won: ok });
+    this._tally(agent, ok ? "claimsWon" : "claimsLost");
     if (ok) this.blockClaims[block] = agent;
   }
 
@@ -101,7 +134,12 @@ class AirGroundFold {
     // map with one record.
     const allowed = new Set(this.blockCells[block] || []);
     const named = Array.isArray(cells) ? cells : [...allowed];
-    for (const c of named) if (allowed.has(c)) this.surveyed.add(c);
+    for (const c of named) if (allowed.has(c)) {
+      this.surveyed.add(c);
+      this._sec(c).surveyedBy = agent;
+    }
+    this._blk(block).surveyedBy = agent;
+    this._tally(agent, "surveyed");
   }
 
   rtb(agent) {
@@ -118,7 +156,12 @@ class AirGroundFold {
     if (this.unhealthy.has(agent) || !this.sectors.has(cell)) return;
     if (this.explored.has(cell)) return;   // already covered, nothing to warn
     const w = this.hazardReports[cell] || (this.hazardReports[cell] = new Set());
+    const fresh = !w.has(agent);
     w.add(agent);
+    if (fresh) {
+      this._sec(cell).hazards.push(agent);
+      this._tally(agent, w.size === 1 ? "sighted" : "corroborated");
+    }
     if (w.size >= 2) {
       this.confirmedHazards.add(cell);
       this.unreachable.add(cell);
@@ -137,6 +180,8 @@ class AirGroundFold {
       && !this.unreachable.has(sector)
       && !(sector in this.claimed)
       && !Object.values(this.claimed).includes(agent);
+    this._sec(sector).claims.push({ agent, won: ok });
+    this._tally(agent, ok ? "claimsWon" : "claimsLost");
     if (ok) this.claimed[sector] = agent;
   }
 
@@ -145,6 +190,8 @@ class AirGroundFold {
     if (this.claimed[sector] !== agent) return;   // only the holder credits it
     this.explored.add(sector);
     this.exploredBy[sector] = agent;
+    this._sec(sector).exploredBy = agent;
+    this._tally(agent, "explored");
     delete this.claimed[sector];
   }
 
