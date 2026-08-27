@@ -28,11 +28,12 @@ Attitude control is the published Mavic 2 PRO law from Webots' own
 not from the sample, which is a patrol demo rather than a position controller
 and flies away when driven from a survey plan; see the note above `KP_POS`.
 
-That sample also asks for `basicTimeStep 8`, which this world deliberately
-does not use: measured here, a finer step takes real time from 0.90x to
-0.014x because contact solving against the arena's sixteen procedural pit
-meshes explodes below 32 ms. The world runs at 32 with damping 0.5 instead.
-See the note in `worlds/airground_arena.wbt`.
+The world runs at the `basicTimeStep 8` that sample asks for. It could not
+always: with simulation 2's sixteen procedural pit meshes a fine step cost
+0.014x real time, so an earlier version of this world ran at 32. Replacing
+that ground with one light elevation grid made 8 ms free (19x real time
+against 32 ms's 43x), and the finer step is what stops ODE giving up when a
+Pioneer is sitting in the crater's steep walls.
 """
 
 import json
@@ -41,8 +42,15 @@ import os
 import select
 import socket
 import sys
+import threading
 
 from controller import Robot  # Webots
+
+# Optional, and only for the dashboard. See TelemetryBeacon.
+try:
+    import websocket          # websocket-client
+except ImportError:           # pragma: no cover
+    websocket = None
 
 # --- link ---
 # One port per drone, matching airground.launch.py. Overridable for anyone
@@ -136,6 +144,74 @@ class LineSocket:
             self.closed = True
 
 
+class TelemetryBeacon:
+    """Publish this airframe's pose to rosbridge, for observers only.
+
+    Read this alongside the claim at the top of the file, because it looks
+    like a contradiction and is not. The `air_agent` — the process that holds
+    the Vertex membership, folds the log, and decides anything — has no ROS in
+    it whatsoever and never will. This is the Webots-side airframe telling a
+    dashboard where it physically is, which is the same thing the Pioneers'
+    controllers do over the same bridge, and it is exactly the "external view
+    built from public topics a real fleet dashboard would use" that the arena
+    scenario's viewer is careful about too.
+
+    Nothing published here is read back by any agent, and no coordination
+    decision depends on it. Pull the plug and the fleet behaves identically;
+    only the map loses its drone markers. It is entirely optional: if
+    websocket-client is missing or rosbridge is down, the drone flies exactly
+    as before and the viewer falls back to placing it over the block consensus
+    says it holds.
+    """
+
+    def __init__(self, url, name):
+        self.pose_topic = f"/{name}/pose"
+        self.air_topic = f"/{name}/air_state"
+        self.connected = False
+        self._app = None
+        if websocket is None:
+            print(f"[{name}] websocket-client not importable; no dashboard "
+                  f"telemetry (flight is unaffected)", flush=True)
+            return
+        self._app = websocket.WebSocketApp(
+            url, on_open=self._on_open,
+            on_close=lambda ws, *a: setattr(self, "connected", False),
+            on_error=lambda ws, e: None)
+        threading.Thread(target=self._app.run_forever,
+                         kwargs={"reconnect": 3, "ping_interval": 10},
+                         daemon=True).start()
+
+    def _on_open(self, ws):
+        ws.send(json.dumps({"op": "advertise", "topic": self.pose_topic,
+                            "type": "geometry_msgs/PointStamped"}))
+        ws.send(json.dumps({"op": "advertise", "topic": self.air_topic,
+                            "type": "std_msgs/String"}))
+        self.connected = True
+        print(f"[{self.pose_topic.split('/')[1]}] dashboard telemetry on "
+              f"{self.pose_topic} (observers only; the agent stays ROS-free)",
+              flush=True)
+
+    def _send(self, topic, msg):
+        if not self.connected or self._app is None:
+            return
+        try:
+            self._app.send(json.dumps({"op": "publish", "topic": topic, "msg": msg}))
+        except Exception:
+            self.connected = False
+
+    def publish(self, x, y, alt, clearance, battery, goal, landing):
+        self._send(self.pose_topic, {
+            "header": {"stamp": {"sec": 0, "nanosec": 0}, "frame_id": "map"},
+            "point": {"x": x, "y": y, "z": alt}})
+        self._send(self.air_topic, {"data": json.dumps({
+            "alt": round(alt, 2),
+            "clearance": round(clearance, 2) if clearance == clearance else None,
+            "battery": round(battery, 3),
+            "landing": bool(landing),
+            "goal": [round(goal[0], 1), round(goal[1], 1)] if goal else None,
+        })})
+
+
 class Surveyor(Robot):
     def __init__(self):
         Robot.__init__(self)
@@ -183,6 +259,9 @@ class Surveyor(Robot):
         self.last_tx = 0.0
         self.last_status = 0.0
         self.wire = None
+        self.beacon = TelemetryBeacon(
+            os.environ.get("ROSBRIDGE_URL", "ws://localhost:9090"),
+            self.robot_name)
 
     # ---- link ----
     def connect(self):
@@ -308,10 +387,12 @@ class Surveyor(Robot):
                       f"clear={self.ranger.getValue():5.1f}m "
                       f"batt={self.battery:.0%} {where}", flush=True)
 
+            clearance = (self.ranger.getValue() if self.ranger is not None
+                         else float("nan"))
             if now - self.last_tx >= TELEMETRY_PERIOD:
+                self.beacon.publish(x, y, alt, clearance, self.battery,
+                                    self.goal, self.landing)
                 self.last_tx = now
-                clearance = (self.ranger.getValue() if self.ranger is not None
-                             else float("nan"))
                 self.wire.send_json({
                     "t": "telemetry",
                     "x": round(x, 3), "y": round(y, 3), "z": round(alt, 3),

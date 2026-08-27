@@ -17,14 +17,18 @@ process. All four are peers in one hashgraph folding one ordered log. If they
 agree, tessera's contract is demonstrably a thin ROS adapter over the
 protocol rather than a dialect of its own.
 
-**Sensor asymmetry that consensus has to resolve.** The arena has sixteen
-craters, and simulation 2's README records the flaw honestly: they are
-invisible to a horizontal Sick LMS 291, and a Pioneer that drives into one is
-trapped for good. A drone looking down sees exactly what the ground lidar
-cannot. So the ground tier physically depends on the air tier for
-information, and the ordered log is what turns that dependency into a map
-both bots agree on. Simulation 3 takes simulation 2's documented limitation
-and makes it the subject.
+**Sensor asymmetry that consensus has to resolve.** Simulation 2's README
+records a flaw honestly: a crater is invisible to a horizontal Sick LMS 291,
+and a Pioneer that drives into one is trapped for good. A drone looking down
+sees exactly what the ground lidar cannot. So the ground tier physically
+depends on the air tier for information, and the ordered log is what turns
+that dependency into a map both bots agree on. Simulation 3 takes that
+documented limitation and makes it the subject.
+
+Doing so needed a real hole to point at, which the arena turned out not to
+have: its sixteen `Pit` nodes are berms, not craters, measured at +0.40 to
++1.14 m and never negative. This world therefore generates its own ground.
+See §6.
 
 ---
 
@@ -117,7 +121,10 @@ Opaque JSON records on `VertexTransaction.payload` (all carry `epoch`;
   `tashi-vertex` at the same pinned version `vertex_core` uses, folds the log
   through its own `AirGroundState` in `src/fold.rs`, and flies a lawnmower
   pass over whichever block it holds. The FFI handles are `!Send`, so it runs
-  on a current-thread runtime in one `select!` loop.
+  on a current-thread runtime as two cooperative tasks: a recv loop that is
+  never cancelled, because `recv_message()` is not cancellation-safe and
+  `select!` dropping it corrupts the heap, and a control loop that selects
+  only over cancellation-safe futures. This is `vertex_core`'s shape.
 - **`pioneer_sweeper`** and **`mavic_surveyor`** (`controllers/`) are the
   Webots controllers, native on the host. Neither makes a coordination
   decision; they fly or drive where told and report what they sense.
@@ -139,19 +146,22 @@ pins `tashi-vertex = "=0.14.0"`, the exact version `vertex_core` pins. A
 mismatch between the drone binaries and `vertex_node` is the single mistake
 that breaks the whole demonstration.
 
-## 3. Keeping two folds honest
+## 3. Keeping three folds honest
 
-The fold now exists twice: `nodes/airground_fsm.py` for the bots and
-`air_agent/src/fold.rs` for the drones. If they ever disagree the
-simulation's central claim collapses, and they would disagree silently.
+The fold exists three times: `nodes/airground_fsm.py` for the bots,
+`air_agent/src/fold.rs` for the drones, and `viewer/airground_fold.js` so the
+viewer can decode `/vertex/event` itself rather than trust a summary. If any
+two disagree the simulation's central claim collapses, and they would
+disagree silently.
 
 So they are pinned together by **`fixtures/conformance.json`**: a 45-record
 log plus the canonical state snapshot after every single record. Both
 implementations replay it and check every snapshot.
 
 ```bash
-python3 nodes/test_airground_fsm.py        # Python side
-(cd air_agent && cargo test)               # Rust side
+python3 nodes/test_airground_fsm.py        # Python
+(cd air_agent && cargo test)               # Rust
+node viewer/airground_fold.test.js         # JavaScript
 ```
 
 Change one implementation and the other goes red at the exact record that
@@ -286,7 +296,44 @@ docker exec -it $(docker ps -q -f name=tessera-sim-run | head -1) bash -lc \
    && ros2 topic echo /bot_0/mission_state'
 ```
 
-### 5.4 Verifying a run
+### 5.4 The live viewer
+
+`viewer/airground_viewer.html` is a self-contained page (no build step, no
+external dependency) that connects to the same rosbridge the Webots
+controllers use. Open it, press Connect, and the defaults match the live
+launch.
+
+```bash
+open vertex_ros2/test/simulation_airground/viewer/airground_viewer.html
+```
+
+It shows what the arena's viewer cannot: a fleet split across two tiers. Air
+blocks are drawn as a backdrop under the ground sectors; unsurveyed sectors
+are dark, so the cross-tier gate is visible as the map fills in behind the
+drones; and every hazard is badged with its witness count, amber at one and
+red at two.
+
+Two things about the drones are worth knowing. Their **agents** publish
+nothing to ROS at all, which is the scenario's whole claim, so their column in
+the consensus matrix is this page's own fold of `/vertex/event`, decoded in
+JavaScript by the same rules the Rust fold uses. Their **airframes** do
+publish a pose for observers (`controllers/mavic_surveyor`'s
+`TelemetryBeacon`), exactly as the Pioneers' controllers do, so the map can
+show where they physically are. Nothing reads that back and no decision
+depends on it; turn it off and the fleet behaves identically, the map just
+falls back to drawing each drone over the block consensus says it holds.
+
+That JS fold is a third implementation of the same rules, so it replays
+`fixtures/conformance.json` too:
+
+```bash
+node viewer/airground_fold.test.js
+```
+
+One fixture, three languages, and a divergence fails at the exact record that
+caused it.
+
+### 5.5 Verifying a run
 
 Every agent writes a per-node journal to `logs/`, bots and drones alike, in
 the same EVENT/STATE/TX/DECIDE shape the other two simulations use. The most
@@ -309,6 +356,21 @@ tail -1 logs/drone_0_airground.log
   signal deterministic and the assertions crisp. A real detector on the
   gimbal camera would change nothing in the protocol: the fold's
   corroboration rule is the point, not how a hazard was first spotted.
+- **The world's ground is ours, not the arena's** (`worlds/gen_world.py`).
+  Simulation 2's sixteen `Pit` nodes are not holes: the proto's height is
+  `(1 - g) * g * size.z` with `g` a gaussian peaking at the centre, so it is
+  zero at the centre, zero at the rim, and about 1.2 m in between. Measured by
+  flying a drone transect, ground height across that arena ran +0.40 to
+  +1.14 m and never went negative. A horizontal lidar sees a berm, so the
+  premise of this whole scenario had no physical basis there. One elevation
+  grid with a real 2.5 m crater replaces the flat floor and all sixteen pits,
+  and is ~60x cheaper in collision triangles into the bargain. Everything
+  else, trees rocks deer and footprint, is the arena's.
+- **A crater worth warning about will swallow a Pioneer.** It does: the bot
+  that confirms S05 ends up in it. The coordinator's `immobilized_sec` guard
+  makes a stuck bot stop claiming, so it degrades the fleet instead of
+  starving it, and the other bot finishes. This is why there is one crater and
+  not several: two craters can cost both bots.
 - **Battery is a software model**, not the Mavic proto's `battery` field, so
   the `rtb` lease fires at reproducible times in both the live world and the
   headless mock.

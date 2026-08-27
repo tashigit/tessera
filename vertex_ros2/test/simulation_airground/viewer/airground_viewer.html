@@ -30,9 +30,15 @@
   main { display: flex; height: calc(100vh - 46px - 250px); }
   #mapWrap { flex: 1; position: relative; min-width: 0; }
   canvas { display: block; background: #0c0f16; }
-  #legend { position: absolute; top: 10px; left: 10px; background: rgba(10,13,20,0.88);
-            border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
-            font-size: 11px; color: var(--dim); line-height: 1.65; }
+  /* The legend lives in the sidebar, not floating over the canvas: as an
+     overlay it covered the top-left sectors, which are real map content. */
+  #legend { border-bottom: 1px solid var(--border); font-size: 11px;
+            color: var(--dim); line-height: 1.6; }
+  #legend > summary { padding: 8px 10px; cursor: pointer; color: var(--dim);
+                      font-size: 11px; text-transform: uppercase;
+                      letter-spacing: 0.04em; user-select: none; }
+  #legend .body { padding: 0 10px 10px; columns: 2; column-gap: 14px; }
+  #legend .body > div { break-inside: avoid; }
   #legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
                 margin-right: 6px; vertical-align: middle; }
   #legend hr { border: none; border-top: 1px solid var(--border); margin: 5px 0; }
@@ -105,24 +111,24 @@
 <main>
   <div id="mapWrap">
     <canvas id="map"></canvas>
-    <div id="legend">
-      <div><strong style="color:var(--text)">Ground sectors</strong></div>
-      <div><span class="sw" style="background:#1a1f2b;border:1px solid #333"></span>unsurveyed — no bot may claim it</div>
-      <div><span class="sw" style="background:#f4f4f4;border:1px solid #ccc"></span>surveyed, free</div>
-      <div><span class="sw" style="background:#4fc3f733;border:1px dashed #4fc3f7"></span>claimed (in progress)</div>
-      <div><span class="sw" style="background:#4fc3f7"></span>explored (fill = bot colour)</div>
-      <div><span class="sw" style="background:#3a0a0a;border:1px solid #7a1414"></span>condemned (hazard confirmed)</div>
-      <hr>
-      <div><strong style="color:var(--text)">Hazards</strong></div>
-      <div><span class="sw" style="background:#e8a33d"></span>provisional — one witness, deferred</div>
-      <div><span class="sw" style="background:#e5484d"></span>confirmed — two distinct witnesses</div>
-      <hr>
-      <div><span class="sw" style="background:#b07cf0;border-radius:2px"></span>air block being surveyed</div>
-      <div>ring: <span style="color:#35c463">green</span> healthy ·
-        <span style="color:#e5484d">red</span> unhealthy</div>
-    </div>
   </div>
   <div id="sidebar">
+    <details id="legend" open>
+      <summary>Legend</summary>
+      <div class="body">
+        <div><span class="sw" style="background:#1a1f2b;border:1px solid #333"></span>unsurveyed — no bot may claim</div>
+        <div><span class="sw" style="background:#f4f4f4;border:1px solid #ccc"></span>surveyed, free</div>
+        <div><span class="sw" style="background:#4fc3f733;border:1px dashed #4fc3f7"></span>claimed</div>
+        <div><span class="sw" style="background:#4fc3f7"></span>explored</div>
+        <div><span class="sw" style="background:#3a0a0a;border:1px solid #7a1414"></span>condemned</div>
+        <div><span class="sw" style="background:#b07cf0;border-radius:2px"></span>block being surveyed</div>
+        <div><span class="sw" style="background:#e8a33d"></span>hazard, 1 witness</div>
+        <div><span class="sw" style="background:#e5484d"></span>hazard confirmed</div>
+        <div>● bot &nbsp; ◆ drone</div>
+        <div>ring: <span style="color:#35c463">healthy</span> /
+          <span style="color:#e5484d">unhealthy</span></div>
+      </div>
+    </details>
     <div class="tierHead">Ground tier — tessera (ROS 2 + Python fold)</div>
     <div class="agents" id="bots"></div>
     <div class="tierHead">Air tier — native Rust, no ROS</div>
@@ -196,6 +202,12 @@ let fold = new AirGroundFold(geom.ids, blockGeom.ids, blockGeom.cells);
 // equivalent for the drones (see drawDrones).
 const botPose = {};
 const botMission = {};
+// The drones' own airframes publish pose for observers only (see
+// TelemetryBeacon in controllers/mavic_surveyor). No agent reads it and no
+// decision depends on it; if it is absent the drone is drawn over the block
+// consensus says it holds instead.
+const dronePose = {};
+const droneAir = {};
 
 // ---- minimal rosbridge client (subscribe-only JSON over WS) ----
 class RosBridge {
@@ -409,16 +421,19 @@ function drawBots(tr, unhealthy) {
   }
 }
 
-// The drones publish NOTHING to ROS — no pose, no state, no diagnostics. That
-// is the scenario's whole claim, so this page will not invent a position for
-// them. They are drawn over the block consensus says they hold, and parked at
-// the edge when idle. Everything shown about a drone is derived from the
-// ordered log, which is the only thing it shares with anyone.
+// Drones are drawn at their real position when the airframe is reporting one
+// (dashboard telemetry, see TelemetryBeacon). That is observation only: no
+// agent reads it. When it is absent — rosbridge down, or an air_agent running
+// without Webots — fall back to the centre of whichever block consensus says
+// the drone holds, which is still an honest answer derived from the log.
 function drawDrones(tr, unhealthy, blockClaims) {
   DRONES.forEach((d, i) => {
     const bid = Object.keys(blockClaims).find((b) => blockClaims[b] === d);
+    const live = dronePose[d];
     let wx, wy;
-    if (bid) {
+    if (live) {
+      wx = live.x; wy = live.y;
+    } else if (bid) {
       const cells = blockGeom.cells[bid] || [];
       wx = cells.reduce((s, c) => s + geom.centers[c][0], 0) / cells.length;
       wy = cells.reduce((s, c) => s + geom.centers[c][1], 0) / cells.length;
@@ -427,8 +442,29 @@ function drawDrones(tr, unhealthy, blockClaims) {
       wy = CONFIG.gridMinY + CONFIG.cellH * (0.6 + i * 0.9);
     }
     const [sx, sy] = tr.toScreen(wx, wy);
+    const air = droneAir[d];
+
+    // A line to the waypoint it is flying to, so "what it is doing" is visible
+    // as motion rather than inferred from a label.
+    if (live && air && air.goal) {
+      const [gx, gy] = tr.toScreen(air.goal[0], air.goal[1]);
+      ctx.save();
+      ctx.strokeStyle = hexAlpha(colorOf(d), 0.5);
+      ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(gx, gy); ctx.stroke();
+      ctx.beginPath(); ctx.arc(gx, gy, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = hexAlpha(colorOf(d), 0.8); ctx.fill();
+      ctx.restore();
+    }
+
     ctx.save();
     ctx.translate(sx, sy);
+    // A soft shadow scaled by altitude, so height reads at a glance.
+    if (live) {
+      const r = 15 + Math.max(0, live.z) * 0.7;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = hexAlpha(colorOf(d), 0.10); ctx.fill();
+    }
     ctx.beginPath();               // a diamond, so air never reads as ground
     ctx.moveTo(0, -13); ctx.lineTo(13, 0); ctx.lineTo(0, 13); ctx.lineTo(-13, 0);
     ctx.closePath();
@@ -437,9 +473,22 @@ function drawDrones(tr, unhealthy, blockClaims) {
     ctx.fillStyle = "#0b0e14"; ctx.font = "bold 11px ui-monospace, monospace";
     ctx.textAlign = "center"; ctx.fillText(shortName(d), 0, 4);
     ctx.restore();
-    if (!bid) {
-      ctx.fillStyle = "#5c6579"; ctx.font = "italic 10px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText("no ROS pose", sx, sy + 26);
+
+    ctx.textAlign = "center"; ctx.font = "10px ui-monospace, monospace";
+    if (live) {
+      ctx.fillStyle = "#9099ab";
+      const alt = `${live.z.toFixed(1)} m`;
+      const what = air && air.landing ? "landing"
+                 : bid ? `surveying ${bid}`
+                 : air && air.goal ? "transiting" : "holding";
+      ctx.fillText(`${alt} · ${what}`, sx, sy + 26);
+      if (air && typeof air.battery === "number") {
+        ctx.fillStyle = air.battery < 0.25 ? "#e8a33d" : "#5c6579";
+        ctx.fillText(`batt ${Math.round(air.battery * 100)}%`, sx, sy + 37);
+      }
+    } else {
+      ctx.fillStyle = "#5c6579"; ctx.font = "italic 10px sans-serif";
+      ctx.fillText(bid ? "position from consensus" : "no telemetry", sx, sy + 26);
     }
   });
 }
@@ -486,10 +535,15 @@ function renderAgents() {
   dronesEl.innerHTML = "";
   for (const d of DRONES) {
     const bid = Object.keys(blockClaims).find((x) => blockClaims[x] === d);
-    let role = "idle", sub = "no ROS presence — state via consensus only";
+    let role = "idle", sub = "agent is ROS-free; state via consensus";
     if (grounded.has(d)) { role = "returned to base"; sub = "recharging · block released"; }
     else if (bid) { role = "surveying " + bid; sub = (blockGeom.cells[bid] || []).join(" "); }
     else if (phase === "done") role = "done";
+    const live = dronePose[d], air = droneAir[d];
+    if (live) {
+      sub = `${sub} · alt ${live.z.toFixed(1)} m · (${live.x.toFixed(1)}, ${live.y.toFixed(1)})`;
+      if (air && typeof air.battery === "number") sub += ` · ${Math.round(air.battery * 100)}%`;
+    }
     dronesEl.appendChild(agentCard(d, role, sub, !unhealthy.has(d)));
   }
 }
@@ -632,6 +686,14 @@ function subscribeAll() {
       try { botMission[b] = JSON.parse(m.data); } catch {}
     });
   }
+  for (const d of DRONES) {
+    bridge.subscribe(`/${d}/pose`, "geometry_msgs/msg/PointStamped", (m) => {
+      dronePose[d] = { x: m.point.x, y: m.point.y, z: m.point.z };
+    });
+    bridge.subscribe(`/${d}/air_state`, "std_msgs/msg/String", (m) => {
+      try { droneAir[d] = JSON.parse(m.data); } catch {}
+    });
+  }
 }
 
 document.getElementById("connectBtn").addEventListener("click", () => {
@@ -647,6 +709,8 @@ document.getElementById("connectBtn").addEventListener("click", () => {
   feedEl.innerHTML = "";
   for (const k of Object.keys(botPose)) delete botPose[k];
   for (const k of Object.keys(botMission)) delete botMission[k];
+  for (const k of Object.keys(dronePose)) delete dronePose[k];
+  for (const k of Object.keys(droneAir)) delete droneAir[k];
   for (const k of Object.keys(disagreeSince)) delete disagreeSince[k];
 
   bridge.disconnect(); bridge.subs.clear(); subscribeAll();

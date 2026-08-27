@@ -80,6 +80,23 @@ class GroundCoordinator(VertexAgent):
         # no forward progress toward the target for this long -> abandon, and
         # corroborate if the air tier had already flagged the sector
         self.declare_parameter("stall_sec", 20.0)
+        # Physically immobilized: commanded to drive but the body has not
+        # displaced for this long. A crater steep enough to be worth warning
+        # about is steep enough to swallow a Pioneer, and it happens: a bot
+        # drove into S05 and could not climb out. A trapped bot must stop
+        # claiming, or it starves sectors it can never reach and the fleet
+        # never finishes. Local gate only; health stays a sensor-stream
+        # verdict, exactly as in the arena scenario.
+        self.declare_parameter("immobilized_sec", 45.0)
+        # After this many of my OWN failed attempts on one sector, report it as
+        # impassable. Not every blocker is a crater: a tight cluster of trees
+        # stops a Pioneer just as well, and the air tier sees straight over it.
+        # Without this a bot claims such a sector, stalls, abandons, re-claims
+        # and loops forever, which is exactly what happened on S10. Repeated
+        # first-hand failure is evidence, so it goes in as `corroborate` and
+        # obeys the same two-distinct-witness rule as everything else: one
+        # unlucky bot defers the sector, two independent bots condemn it.
+        self.declare_parameter("max_attempts", 2)
 
         p = lambda n: self.get_parameter(n).value
         self.me = str(p("agent_id"))
@@ -98,6 +115,8 @@ class GroundCoordinator(VertexAgent):
         self.stream_timeout = float(p("stream_timeout_sec"))
         self.suspect_after = float(p("suspect_after_sec"))
         self.stall_sec = float(p("stall_sec"))
+        self.immobilized_sec = float(p("immobilized_sec"))
+        self.max_attempts = int(p("max_attempts"))
 
         self.state = AirGroundState(self.sectors, self.blocks,
                                     self.block_cells, self.agents)
@@ -123,6 +142,9 @@ class GroundCoordinator(VertexAgent):
         self._pursuit_progress_at = None
         self._outcome_sent = None
         self._corroborated = set()
+        self._attempts = {}            # (epoch, sector) -> my failed attempts
+        self._imm_anchor = None        # (t, x, y) while driving
+        self._immobilized_at = None    # (x, y) where the body got stuck
         self._last_decision = None
 
         log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -210,6 +232,7 @@ class GroundCoordinator(VertexAgent):
             "confirmed_hazards": sorted(s.confirmed_hazards),
             "grounded": sorted(s.grounded),
             "unhealthy": sorted(s.unhealthy),
+            "immobilized": self._immobilized_at is not None,
             "events": self.events_folded,
         }, sort_keys=True)))
 
@@ -218,6 +241,7 @@ class GroundCoordinator(VertexAgent):
         now = self._now_sec()
         self._beacon(now)
         self._silence_lease(now)
+        self._check_mobility(now)
 
         s = self.state
         if s.phase == DONE:
@@ -237,7 +261,8 @@ class GroundCoordinator(VertexAgent):
         if mine is None:
             self._pursuit = None
             self._drive("HOLD", None)
-            if now - self._last_claim >= self.claim_interval and self._healthy():
+            if (now - self._last_claim >= self.claim_interval
+                    and self._healthy() and self._immobilized_at is None):
                 self._last_claim = now
                 target = self._pick_sector()
                 if target is not None:
@@ -296,14 +321,94 @@ class GroundCoordinator(VertexAgent):
             return
         flagged = sector in s.hazard_reports and self.me not in s.hazard_reports[sector]
         self._outcome_sent = "stalled"
+        key = (s.epoch, sector)
+        self._attempts[key] = self._attempts.get(key, 0) + 1
         self.propose({"op": "abandon", "agent": self.me,
                       "sector": sector, "epoch": s.epoch})
-        self._flog(f"TX     abandon {sector} (no progress for {self.stall_sec}s)")
-        if flagged and (s.epoch, sector) not in self._corroborated:
-            self._corroborated.add((s.epoch, sector))
+        self._flog(f"TX     abandon {sector} (no progress for {self.stall_sec}s, "
+                   f"attempt {self._attempts[key]})")
+        # Two ways to become a witness that this ground is impassable: the air
+        # tier already flagged it and I have just failed to cross it, or I have
+        # failed on it enough times by myself to be sure.
+        if key in self._corroborated:
+            return
+        reason = None
+        if flagged:
+            reason = "air flagged it, I cannot pass"
+        elif self._attempts[key] >= self.max_attempts:
+            reason = f"{self._attempts[key]} failed attempts of my own"
+        if reason:
+            self._corroborated.add(key)
             self.propose({"op": "corroborate", "agent": self.me,
                           "cell": sector, "epoch": s.epoch})
-            self._flog(f"TX     corroborate {sector} (air flagged it, I cannot pass)")
+            self._flog(f"TX     corroborate {sector} ({reason})")
+
+    def _check_mobility(self, now):
+        """Notice when the body has stopped moving despite being driven.
+
+        Separate from the stall check: a stall is about progress toward a
+        target and produces `abandon`, this is about the robot being stuck at
+        all and produces a local refusal to take more work.
+        """
+        if self.pose_x is None:
+            return
+        if self._immobilized_at is not None:
+            ix, iy = self._immobilized_at
+            if math.hypot(self.pose_x - ix, self.pose_y - iy) > 1.0:
+                self._immobilized_at = None      # climbed out: resume claiming
+                self._imm_anchor = None
+                self._decide_once("mobile again, resuming claims")
+            return
+        if self._pursuit is None:                # not being driven anywhere
+            self._imm_anchor = None
+            return
+        if self._imm_anchor is None:
+            self._imm_anchor = (now, self.pose_x, self.pose_y)
+            return
+        t0, ax, ay = self._imm_anchor
+        if math.hypot(self.pose_x - ax, self.pose_y - ay) > 0.5:
+            self._imm_anchor = (now, self.pose_x, self.pose_y)
+        elif now - t0 > self.immobilized_sec:
+            self._immobilized_at = (self.pose_x, self.pose_y)
+            self._flog(f"DECIDE IMMOBILIZED at ({self.pose_x:.1f}, "
+                       f"{self.pose_y:.1f}) — no longer claiming")
+            self._witness_where_i_am()
+
+    def _witness_where_i_am(self):
+        """Being stuck is evidence about WHERE I AM, not where I was going.
+
+        The stall path in _pursue only reports the sector it was pursuing, so a
+        bot that drives into a crater while merely crossing it says nothing —
+        which happened: bot_0 fell into S05 en route to S10, went immobilized,
+        and the drone's warning about S05 stayed on one witness forever. A body
+        that cannot move is a first-hand observation about the ground beneath
+        it, so report that sector, whether or not anyone flagged it first. The
+        fold folds `corroborate` and `hazard` identically and counts distinct
+        agents, so this is a second witness when a drone already saw it and a
+        first witness when nobody did.
+        """
+        sector = self._sector_at(self.pose_x, self.pose_y)
+        if sector is None:
+            return
+        key = (self.state.epoch, sector)
+        if key in self._corroborated:
+            return
+        self._corroborated.add(key)
+        self.propose({"op": "corroborate", "agent": self.me,
+                      "cell": sector, "epoch": self.state.epoch})
+        self._flog(f"TX     corroborate {sector} (immobilized in it)")
+
+    def _sector_at(self, x, y):
+        """Which sector a world position falls in, or None if outside."""
+        if x is None or y is None:
+            return None
+        p = lambda n: self.get_parameter(n).value
+        nx, ny = int(p("grid_nx")), int(p("grid_ny"))
+        ix = int(math.floor((x - float(p("grid_min_x"))) / float(p("cell_w"))))
+        iy = int(math.floor((y - float(p("grid_min_y"))) / float(p("cell_h"))))
+        if ix < 0 or iy < 0 or ix >= nx or iy >= ny:
+            return None
+        return f"S{iy * nx + ix:02d}"
 
     def _pick_sector(self):
         """Nearest claimable sector, deferring cells the air tier flagged.

@@ -46,16 +46,26 @@ N = int(SPAN / STEP) + 1
 # Craters, as (x, y, radius, depth). Both sit on a SECTOR CENTRE, because the
 # drones survey centre to centre and would otherwise fly straight past them.
 # S05 is the one the launch_test also uses (against a mock crater).
-#   2.5 m deep over a 3 m radius. Invisible to a Sick LMS 291 at 0.32 m and an
-#   unmistakable anomaly to a downward ranger at 12 m. The steepness matters as
-#   much as the depth: at 4 m radius the walls were only about 30 degrees and a
-#   Pioneer drove straight through, reaching the sector centre and crediting it
-#   as explored. At 3 m they are past 50 degrees, so the robot is stopped AT THE
-#   RIM. That is the behaviour worth having: it makes no progress, stalls, and
-#   reports `abandon` + `corroborate`, but it is never trapped and stays free to
-#   work elsewhere.
-CRATERS = [(-5.0, 0.0, 3.0, 2.5),      # S05
-           (15.0, 0.0, 3.0, 2.5)]      # S07
+#   3 m deep over a 4.5 m radius: 46 degree walls, and 1.76 m below grade at
+#   the coordinator's 2 m `cover_radius`.
+#
+#   Both numbers had to be tuned against `cover_radius`, and the second one is
+#   the subtle part. A bot credits a sector once it is within `cover_radius` of
+#   the centre, so if the bowl is narrow enough that its rim lies outside that
+#   ring, the bot marks the sector explored from flat ground and never meets
+#   the hazard at all. That happened: at radius 3 the ground is only 0.17 m
+#   down at 2 m out, and S05 was cheerfully reported explored. The crater has
+#   to be WIDER than the credit radius, not just deeper.
+#
+#   Depth and slope matter for the other half: at 30 degrees a Pioneer simply
+#   drives through. Past 45 it cannot, so it either stalls on the wall or ends
+#   up in the bowl, and either way it reports what it found.
+# ONE crater, not two. A crater steep enough to be worth warning about is
+# steep enough to swallow a Pioneer, and it does: the bot that confirms S05
+# ends up in it and stops claiming. With two craters both bots can be lost and
+# the sweep never finishes. One crater loses one bot, the other finishes the
+# remaining eleven sectors, and the run still tells the whole story.
+CRATERS = [(-5.0, 0.0, 4.5, 3.0)]      # S05
 
 
 def height(x, y):
@@ -203,11 +213,15 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/animals/protos/Deer.proto"
 
 WorldInfo {{
-  # Damping matters for the drones: the Mavic control law is tuned with it and
-  # the airframe oscillates without it. 32 ms is coarser than the Mavic
-  # sample's 8 ms, and the drones fly fine at it (verified in isolation with
-  # the sample's constants unchanged).
-  basicTimeStep 32
+  # 8 ms is what the Mavic sample asks for, and with this ground it is free.
+  # The old world could not afford it: its sixteen 100x100 Pit meshes put
+  # physics at ~595 ms/step and real time at 0.014x, so it ran at 32. Measured
+  # again on this ground, 32 gives 43x real time and 8 gives 19x, so the finer
+  # step costs nothing that matters and buys solver convergence. That matters
+  # here because a Pioneer sitting in the crater's steep walls at 32 ms made
+  # ODE give up: "the current physics step could not be computed correctly".
+  # Damping matters for the drones too; the control law is tuned with it.
+  basicTimeStep 8
   defaultDamping Damping {{
     linear 0.5
     angular 0.5
