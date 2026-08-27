@@ -62,6 +62,46 @@ impl Conduct {
     }
 }
 
+/// The order a block's sector centres get flown, as a boustrophedon pass.
+///
+/// Shared by `Plan::new` and `nearest_claimable_block`, so the block a drone
+/// picks is scored on the point it will actually fly to first rather than on a
+/// separately-derived guess. For a rectangular block those are the same cell
+/// either way (see `entry_point_is_the_lowest_numbered_cell`), so this is about
+/// having one definition of the pass order rather than two, not a bug fix.
+///
+/// Rows alternate direction so the drone never flies the width of the block
+/// empty-handed.
+pub fn survey_waypoints(
+    cells: &[String],
+    centers: &BTreeMap<String, (f64, f64)>,
+) -> Vec<(f64, f64)> {
+    let mut pts: Vec<(f64, f64)> = cells.iter().filter_map(|c| centers.get(c).copied()).collect();
+    pts.sort_by(|a, b| {
+        a.1.partial_cmp(&b.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    let mut serpentine = Vec::with_capacity(pts.len());
+    let mut row: Vec<(f64, f64)> = Vec::new();
+    let mut flip = false;
+    for p in pts {
+        if row.last().is_some_and(|l| (l.1 - p.1).abs() > 1e-6) {
+            if flip {
+                row.reverse();
+            }
+            serpentine.append(&mut row);
+            flip = !flip;
+        }
+        row.push(p);
+    }
+    if flip {
+        row.reverse();
+    }
+    serpentine.append(&mut row);
+    serpentine
+}
+
 /// The lawnmower pass over one block, plus what the ranger saw along the way.
 pub struct Plan {
     pub block: String,
@@ -79,31 +119,7 @@ impl Plan {
     /// sampling aligned with the grid the ground tier claims in, so a
     /// clearance reading maps to exactly one sector with no interpolation.
     pub fn new(block: &str, cells: &[String], centers: &BTreeMap<String, (f64, f64)>) -> Self {
-        let mut pts: Vec<(f64, f64)> = cells.iter().filter_map(|c| centers.get(c).copied()).collect();
-        // Sort into rows, alternating direction, so the drone never flies the
-        // full width of the block empty-handed.
-        pts.sort_by(|a, b| {
-            a.1.partial_cmp(&b.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
-        });
-        let mut serpentine = Vec::with_capacity(pts.len());
-        let mut row: Vec<(f64, f64)> = Vec::new();
-        let mut flip = false;
-        for p in pts {
-            if row.last().is_some_and(|l| (l.1 - p.1).abs() > 1e-6) {
-                if flip {
-                    row.reverse();
-                }
-                serpentine.append(&mut row);
-                flip = !flip;
-            }
-            row.push(p);
-        }
-        if flip {
-            row.reverse();
-        }
-        serpentine.append(&mut row);
+        let serpentine = survey_waypoints(cells, centers);
 
         Plan {
             block: block.to_string(),
@@ -178,9 +194,9 @@ pub fn sector_at(
     Some(format!("S{:02}", iy as usize * nx + ix as usize))
 }
 
-/// The nearest block a healthy, airborne drone may claim, by distance from the
-/// drone to the block's first waypoint. Ties break on block id so two drones
-/// racing for work still produce a deterministic proposal each.
+/// The nearest claimable block, measured to the point the drone would actually
+/// fly to first. Ties break on block id, so two drones racing for work still
+/// each produce a deterministic proposal.
 pub fn nearest_claimable_block(
     st: &AirGroundState,
     t: &Telemetry,
@@ -191,7 +207,7 @@ pub fn nearest_claimable_block(
         .into_iter()
         .filter_map(|b| {
             let cells = block_cells.get(&b)?;
-            let (cx, cy) = cells.first().and_then(|c| centers.get(c)).copied()?;
+            let (cx, cy) = *survey_waypoints(cells, centers).first()?;
             Some((b, (t.x - cx).hypot(t.y - cy)))
         })
         .min_by(|a, c| {
@@ -356,6 +372,56 @@ mod tests {
         assert_eq!(health_record("drone_0", 2, Some(&stale), 0)["ok"], false);
         // No telemetry at all is not healthy either: nothing is connected yet.
         assert_eq!(health_record("drone_0", 3, None, 0)["ok"], false);
+    }
+
+    #[test]
+    fn entry_point_is_the_lowest_numbered_cell() {
+        // Not a coincidence worth relying on silently. The pass starts at the
+        // lowest row travelling in +x, and sectors are numbered row-major from
+        // the south-west, so a rectangular block's first waypoint is always its
+        // lowest-numbered cell. Pinning it here means `survey_waypoints` cannot
+        // be reordered without something going red, since the selection metric
+        // reads its first element.
+        for (nx, ny, bw, bh) in [(4, 3, 2, 1), (4, 4, 2, 2), (6, 4, 3, 2), (3, 1, 2, 1)] {
+            let (_, c) = crate::fold::make_sectors(nx, ny, -20.0, -20.0, 10.0, 10.0);
+            let (blocks, cells) = crate::fold::make_blocks(nx, ny, bw, bh);
+            for b in &blocks {
+                let m = &cells[b];
+                assert_eq!(
+                    *survey_waypoints(m, &c).first().unwrap(),
+                    c[m.first().unwrap()],
+                    "{b} ({nx}x{ny} grid, {bw}x{bh} blocks): the pass must start \
+                     at the lowest-numbered cell"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn closest_block_wins_from_any_corner() {
+        let c = centers();
+        let (blocks, block_cells) = crate::fold::make_blocks(4, 3, 2, 1);
+        let st = AirGroundState::new(
+            crate::fold::make_sectors(4, 3, -20.0, -15.0, 10.0, 10.0).0,
+            blocks, block_cells.clone());
+        // From each corner of the arena the nearest block by entry point must
+        // be the one selected. Computed independently of the function under
+        // test, so this is a real check rather than a restatement.
+        for (px, py) in [(-24.0, -24.0), (24.0, 24.0), (-24.0, 24.0), (24.0, -24.0)] {
+            let want = block_cells
+                .iter()
+                .map(|(b, cells)| {
+                    let (ex, ey) = *survey_waypoints(cells, &c).first().unwrap();
+                    (b.clone(), (px - ex).hypot(py - ey))
+                })
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap().then(a.0.cmp(&b.0)))
+                .map(|(b, _)| b)
+                .unwrap();
+            let got = nearest_claimable_block(
+                &st, &tele(px, py, 12.0, 12.0), &block_cells, &c);
+            assert_eq!(got.as_deref(), Some(want.as_str()),
+                       "from ({px}, {py}) the closest block is {want}");
+        }
     }
 
     #[test]
