@@ -122,10 +122,16 @@ class RosbridgeClient:
         except Exception:
             self.connected = False
 
-    def publish_pose(self, x, y):
+    def publish_pose(self, x, y, z=0.0):
+        # z is the GPS altitude, not a placeholder. It is how the coordinator
+        # knows the robot has fallen into a crater: a Pioneer can DESCEND a
+        # 46 degree wall easily, it just cannot climb back out, so without this
+        # it would drive to the bottom, find itself within cover_radius of the
+        # sector centre, and cheerfully report the sector explored from inside
+        # the hole.
         self._send(self.pose_topic, {
             "header": {"stamp": {"sec": 0, "nanosec": 0}, "frame_id": "map"},
-            "point": {"x": x, "y": y, "z": 0.0}})
+            "point": {"x": x, "y": y, "z": z}})
 
     def publish_telemetry(self, scan_age, camera_age):
         self._send(self.telemetry_topic, {"data": json.dumps(
@@ -169,7 +175,7 @@ def main():
     while robot.step(ts) != -1:
         step_no += 1
         now = robot.getTime()
-        gx, gy, _ = gps.getValues()
+        gx, gy, gz = gps.getValues()
         yaw = imu.getRollPitchYaw()[2]
 
         # sensor-stream freshness (the input to the consensus health beacon)
@@ -182,7 +188,7 @@ def main():
         # throttle the WebSocket feed: a coarse pose is enough for the
         # coordinator's arrival check, and flooding rosbridge delays goto
         if step_no % 3 == 0:
-            bridge.publish_pose(gx, gy)
+            bridge.publish_pose(gx, gy, gz)
         if now - last_telemetry >= TELEMETRY_PERIOD:
             last_telemetry = now
             bridge.publish_telemetry(now - last_scan_t, now - last_image_t)

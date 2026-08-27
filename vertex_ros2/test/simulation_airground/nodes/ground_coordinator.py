@@ -97,6 +97,12 @@ class GroundCoordinator(VertexAgent):
         # obeys the same two-distinct-witness rule as everything else: one
         # unlucky bot defers the sector, two independent bots condemn it.
         self.declare_parameter("max_attempts", 2)
+        # Metres below grade that count as "I am in a hole, not on the ground".
+        # A Pioneer descends a crater wall easily and only discovers the
+        # problem on the way out, so without this it reaches the bottom, finds
+        # itself inside cover_radius of the sector centre, and reports the
+        # sector explored from inside the crater. Falling in is not coverage.
+        self.declare_parameter("below_grade_m", 0.6)
 
         p = lambda n: self.get_parameter(n).value
         self.me = str(p("agent_id"))
@@ -117,11 +123,13 @@ class GroundCoordinator(VertexAgent):
         self.stall_sec = float(p("stall_sec"))
         self.immobilized_sec = float(p("immobilized_sec"))
         self.max_attempts = int(p("max_attempts"))
+        self.below_grade = float(p("below_grade_m"))
 
         self.state = AirGroundState(self.sectors, self.blocks,
                                     self.block_cells, self.agents)
 
         self.pose_x = self.pose_y = None
+        self.pose_z = 0.0
         self._pose_stamp = None
         self._stream_ages = None
         self._telemetry_stamp = None
@@ -174,6 +182,7 @@ class GroundCoordinator(VertexAgent):
 
     def _on_pose(self, msg):
         self.pose_x, self.pose_y = msg.point.x, msg.point.y
+        self.pose_z = msg.point.z
         self._pose_stamp = self._now_sec()
 
     def _on_telemetry(self, msg):
@@ -296,6 +305,11 @@ class GroundCoordinator(VertexAgent):
 
         cx, cy = self.centers[sector]
         dist = math.hypot(self.pose_x - cx, self.pose_y - cy)
+
+        if dist <= self.cover_radius and self.pose_z < -self.below_grade:
+            # Close enough, but underground: this is a crater, not coverage.
+            # Say nothing and let the stall / immobilized paths report it.
+            return
 
         if dist <= self.cover_radius:
             if self._outcome_sent != "explored":
