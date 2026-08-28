@@ -14,7 +14,7 @@ GitHub Release carrying:
   (`vertex_ros2_msgs`, `vertex_ros2`, `vertex_fleet`) with `libtashi-vertex.so`
   copied next to the binaries so the `$ORIGIN`-relative rpath resolves. Extract
   into a workspace and `source install/setup.bash`; no build required
-- release notes recording the exact `tashi-vertex-rs` commit and
+- release notes recording the exact `tashi-vertex` version and
   `tashi-vertex-c` version the artifacts were built against
 
 ## The version pinning chain
@@ -22,11 +22,22 @@ GitHub Release carrying:
 | Level | Pinned by | Where |
 |---|---|---|
 | tessera packages (`vertex_ros2_msgs`, `vertex_ros2`, `vertex_core`, `vertex_fleet`) | the release tag; all four share one version | `package.xml`, `Cargo.toml`, `setup.py` |
-| `tashi-vertex-rs` (Rust bindings) | the commit checked out next to tessera; recorded in the release notes at tag time | `tessera.repos` (`version:` field) for consumers |
-| `tashi-vertex-c` (the engine) | `TASHI_VERTEX_VERSION` in `tashi-vertex-rs/CMakeLists.txt`; its build downloads that GitHub release archive | upstream repository |
+| `tashi-vertex` (Rust bindings) | an exact-version requirement resolved from crates.io, with the checksum in the lockfile | `vertex_core/Cargo.toml` (`=X.Y.Z`), `vertex_core/Cargo.lock` |
+| `tashi-vertex-c` (the engine) | `TASHI_VERTEX_VERSION` inside the pinned `tashi-vertex` crate; its build downloads that GitHub release archive | upstream, fixed by the crate version above |
 
-So one tessera tag transitively identifies the exact engine build: tag →
-recorded bindings commit → its pinned engine release.
+So one tessera tag identifies the exact engine build with nothing recorded out
+of band: tag → the `=X.Y.Z` in `vertex_core/Cargo.toml` → the engine release
+that crate downloads. Checking out the tag reproduces the build, because the
+bindings version is in the tree rather than in whatever happened to be checked
+out beside it.
+
+## Changing the pinned bindings version
+
+`vertex_core/Cargo.toml` carries `tashi-vertex = "=X.Y.Z"`. The `=` is
+deliberate: a caret requirement would let a `cargo update` silently move the
+engine underneath a release. To move versions, edit that requirement, run
+`cargo update -p tashi-vertex --precise <new>`, run the full suite, and commit
+the lockfile with the change.
 
 ## What the version means
 
@@ -59,34 +70,40 @@ git push origin vX.Y.Z
 
 ## Upgrading the engine
 
-To move to a new `tashi-vertex-c` release: bump `TASHI_VERTEX_VERSION` in
-`tashi-vertex-rs`, land whatever binding changes the new engine needs there,
-then in tessera run the full suite against the updated sibling checkout. The
-integration's engine-facing assumptions are concentrated on purpose: time-unit
-pinning lives in `vertex_core/src/convert.rs` (`nanos_to_time`), FFI
-concurrency constraints in `vertex_core/src/engine_task.rs`. If an engine
-upgrade changes either contract, those are the two files to revisit. Cut a new
-tessera release recording the new bindings commit.
+A new engine release reaches tessera through a new `tashi-vertex` crate
+release: upstream bumps `TASHI_VERTEX_VERSION`, lands whatever binding changes
+the engine needs, and publishes. In tessera, bump the pinned requirement as
+above and run the full suite. The integration's engine-facing assumptions are
+concentrated on purpose: time-unit pinning lives in
+`vertex_core/src/convert.rs` (`nanos_to_time`), FFI concurrency constraints in
+`vertex_core/src/engine_task.rs`. If an engine upgrade changes either
+contract, those are the two files to revisit.
+
+To test against an unpublished bindings change, add a temporary
+`[patch.crates-io]` entry pointing `tashi-vertex` at a local checkout. Do not
+land it: the pinned crates.io version is what makes a tag reproducible.
 
 ## Consumers pinning a release
 
 `tessera.repos` on `main` tracks `main`. For reproducible builds, consumers
-replace both `version:` fields with the values from a release: the tessera
-tag, and the `tashi-vertex-rs` commit recorded in that release's notes.
+replace the `version:` field with a release tag. That one value fixes the
+bindings and engine too, since both are pinned inside the tree.
 
 ## Distribution beyond source: evaluation
 
-Where this can go next, and my recommendation. Constraint driving everything:
-`tessera` and `tashi-vertex-rs` are private, and `tashi-vertex-c` ships as a
-private GitHub release. Public channels are out until that changes.
+Where this can go next, and my recommendation. The constraint is now narrower
+than it used to be: `tessera` itself is private, but the dependencies below it
+are not. `tashi-vertex` is on crates.io, and the `tashi-vertex-c` release
+archive its build script fetches downloads unauthenticated. So a public
+channel is gated on this repo going public, and nothing else.
 
 | Channel | Verdict | Notes |
 |---|---|---|
 | **GitHub Releases with install-space tarballs** | **adopted (this document)** | works today with existing repo access control, zero new infrastructure, covers the "run it without building it" case. amd64 only for now; an arm64 job needs an arm runner (`ubuntu-24.04-arm`) |
 | **Container image** (`ghcr.io`, private) | good next step | the Jazzy harness image plus a baked install space gives a runnable `vertex_node` in one pull; natural for fleet deployments already using containers. Adds registry auth management |
 | **bloom / apt (rosdistro)** | not viable while private | bloom releases route through the public rosdistro index. A self-hosted private apt repo is possible but is real infrastructure for little gain over tarballs at current consumer count |
-| **crates.io for `vertex_core`** | blocked upstream | `vertex_core` depends on `tashi-vertex` by path, and crates.io forbids path/git dependencies. Publishable only if `tashi-vertex-rs` (and effectively the engine license story) goes public first |
-| **git dependency for `vertex_core`** | viable with a small change | a consumer Cargo project can depend on `vertex_core` by git URL only if the `tashi-vertex` path dependency is replaced by a git dependency plus a local `[patch]` for workspace development. Worth doing when the first non-ROS Rust consumer shows up, not before |
+| **crates.io for `vertex_core`** | unblocked, gated on this repo going public | the old blocker was the `tashi-vertex` path dependency, which crates.io forbids. That is now an exact version requirement from the registry, so `vertex_core` is publishable as soon as the repo is public. Worth doing when the first non-ROS Rust consumer shows up |
+| **git dependency for `vertex_core`** | works today | a consumer Cargo project can depend on `vertex_core` by git URL as-is. The path dependency that used to make this need a local `[patch]` is gone |
 
 Recommendation: stay on GitHub Releases now, add the container image when a
 deployment asks for it, and revisit apt/crates.io only if the repositories go

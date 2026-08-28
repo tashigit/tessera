@@ -11,8 +11,9 @@ Apple Silicon (M-series) Mac the right move is a Linux container:
 
 - The `ros:jazzy-ros-base` image is **multi-arch**: on an M3 Docker pulls the
   `linux/arm64` variant and runs it **natively** (no x86 emulation, full speed).
-- `tashi-vertex-rs`'s CMake downloads the prebuilt `tashi-vertex-c` release and,
-  on Linux/arm64, links **`libtashi-vertex-arm64.so`** (shipped since v0.14.0).
+- The `tashi-vertex` crate's CMake downloads the prebuilt `tashi-vertex-c`
+  release and, on Linux/arm64, links **`libtashi-vertex-arm64.so`** (shipped
+  since v0.14.0).
 
 [OrbStack](https://orbstack.dev) is a lighter, faster alternative to Docker
 Desktop on macOS and works unchanged with these files.
@@ -26,19 +27,16 @@ Desktop on macOS and works unchanged with these files.
 | `docker/entrypoint.sh` | Sources the env and dispatches `core` / `build` / `test` / `soak` / `shell` |
 | `docker-compose.yml` (repo root) | Bind-mounts the source and defines the run targets |
 
-The image holds only the environment; your repos are **bind-mounted** at run
+The image holds only the environment; this repo is **bind-mounted** at run
 time, so edits on the host take effect immediately with no image rebuild.
 
 ## Prerequisites
 
 - Docker Desktop or OrbStack.
-- `tashi-vertex-rs` checked out as a **sibling** of this repo (it is the
-  `tashi-vertex` path dependency of `vertex_core`):
-  ```
-  Work/Tashi/
-  ├── tessera/            # this repo
-  └── tashi-vertex-rs/    # required sibling
-  ```
+
+That is the whole list. This repo is the only checkout needed: `vertex_core`
+pins `tashi-vertex` from crates.io and its build script fetches the matching
+engine release.
 
 ## Use
 

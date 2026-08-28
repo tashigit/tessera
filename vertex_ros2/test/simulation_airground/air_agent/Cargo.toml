@@ -1,0 +1,23 @@
+[package]
+name = "air_agent"
+version = "0.1.0"
+edition = "2021"
+description = "Drone-side Vertex agent for the air/ground simulation: joins the same consensus committee as tessera's vertex_node, but links tashi-vertex directly with no ROS anywhere."
+license = "Apache-2.0"
+
+[[bin]]
+name = "air_agent"
+path = "src/main.rs"
+
+[dependencies]
+# The SAME pinned version vertex_core uses. Both tiers must link one engine
+# protocol version or they cannot form a committee: this is the constraint the
+# whole simulation rests on. Deliberately `=`, not `^`.
+tashi-vertex = "=0.14.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "io-util", "sync"] }
+
+# Records are opaque JSON on the wire and arrive from the mesh untrusted, so
+# they get a real parser. serde_json's default Map is a BTreeMap, which means
+# `to_string` emits sorted keys with compact separators — byte-identical to
+# vertex_fleet.state.encode's canonical form on the Python side.
+serde_json = "1"

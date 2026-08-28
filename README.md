@@ -12,12 +12,16 @@ implementation.
 > The project is named *tessera* (a single tile in a mosaic): each consensus
 > event is one ordered tile; together they form the agreed-upon history.
 
-**Documentation:** a four-volume tutorial series lives in [`docs/`](docs/)
+**Documentation:** a five-volume tutorial series lives in [`docs/`](docs/)
 (servable with GitHub Pages): concepts and protocol design, building on the
-`vertex_fleet` API, crate-level embedding, and porting a broker-based fleet.
-Consumers start at [`CONSUMING.md`](CONSUMING.md). Two worked examples ship in
-the repo: the [route-exploration simulation](vertex_ros2/test/simulation/) and
-the [arena-exploration port](vertex_ros2/test/simulation_arena/).
+`vertex_fleet` API, crate-level embedding, porting a broker-based fleet, and
+running a mixed fleet where only half the peers are ROS 2 nodes.
+Consumers start at [`CONSUMING.md`](CONSUMING.md). Three worked examples ship
+in the repo: the [route-exploration simulation](vertex_ros2/test/simulation/),
+the [arena-exploration port](vertex_ros2/test/simulation_arena/), and the
+[air/ground survey-and-sweep](vertex_ros2/test/simulation_airground/), where
+two ROS 2 robots and two native-Rust drones share one committee with no ROS on
+the drone side at all.
 
 ---
 
@@ -85,7 +89,7 @@ test result: ok. 1 passed; 0 failed    # tx_saturation (backpressure accounting)
 The **ROS-level** equivalents (3 `vertex_node` processes, no-publish-in-Inactive,
 10-min soak) live in `vertex_ros2/test/` as `launch_test`s for CI on Jazzy
 (`docker/` + `docker-compose.yml` run them on any machine, incl. Apple Silicon).
-The application layer on top is covered by the two simulation suites
+The application layer on top is covered by the three simulation suites
 (`vertex_ros2/test/simulation*/`), which CI also runs headless on every push.
 
 **Miri** (design §7 "Miri'd in CI"): Miri cannot execute the `libtashi-vertex`

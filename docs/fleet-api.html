@@ -178,7 +178,7 @@
   <div class="eyebrow">Tutorial · Volume 2 · The fleet API</div>
   <h1>Adding Vertex consensus to your ROS 2 project with vertex_fleet</h1>
   <p class="lede">This is the fastest route from an existing ROS 2 fleet to leaderless, BFT-consensus coordination: two base classes from the <code>vertex_fleet</code> library, one launch pattern, and a handful of rules the library enforces for you. I build a complete, realistic example along the way: robots allocating charging docks among themselves with no server and no leader.</p>
-  <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;<a href="concepts.html">Concepts and protocol design</a> (the mental model) &nbsp;→&nbsp; 2&nbsp;·&nbsp;The fleet API (you are here) &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> (non-ROS embeddings and adapters). This volume stands alone; read Volume&nbsp;1 when you design a protocol beyond the patterns shown here.</div>
+  <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;<a href="concepts.html">Concepts and protocol design</a> (the mental model) &nbsp;→&nbsp; 2&nbsp;·&nbsp;The fleet API (you are here) &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> (non-ROS embeddings and adapters) &nbsp;·&nbsp; 4&nbsp;·&nbsp;<a href="porting.html">Porting</a> &nbsp;·&nbsp; 5&nbsp;·&nbsp;<a href="mixed-fleet.html">Mixed fleets</a> (a peer that is not a ROS&nbsp;2 node). This volume stands alone; read Volume&nbsp;1 when you design a protocol beyond the patterns shown here.</div>
   <p class="kicker">You need: a ROS 2 Jazzy workspace with the tessera packages built (section 1), and a fleet problem where machines must agree.</p>
 </header>
 
@@ -212,7 +212,7 @@
 </ul>
 
 <h2 id="s1"><span class="stepno">Step 1</span>Setup in five minutes</h2>
-<p>If your workspace already builds tessera, skip ahead. Otherwise, the two repositories sit side by side and one vcs file assembles them:</p>
+<p>If your workspace already builds tessera, skip ahead. Otherwise one vcs file assembles the workspace, and tessera is the only repository in it:</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 mkdir -p fleet_ws/src && cd fleet_ws
 curl -fsSL https://raw.githubusercontent.com/tashigit/tessera/main/tessera.repos -o tessera.repos

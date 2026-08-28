@@ -10,9 +10,9 @@
 #   soak    the 10-minute RSS soak launch_test (SOAK_SECONDS overrides length)
 #   shell   drop into an interactive shell with the environment sourced
 #
-# Expects the repos bind-mounted (see docker-compose.yml):
-#   /ws/src/tessera           this repo
-#   /ws/src/tashi-vertex-rs   sibling crate (vertex_core's path dependency)
+# Expects this repo bind-mounted at /ws/src/tessera (see docker-compose.yml).
+# Nothing else is needed: `tashi-vertex` is pinned from crates.io and its build
+# script downloads the matching tashi-vertex-c release.
 set -euo pipefail
 
 # ROS setup scripts reference unset variables (AMENT_TRACE_SETUP_FILES, ...) and
@@ -33,8 +33,6 @@ export ROS_LOCALHOST_ONLY=1
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
 TESSERA=/ws/src/tessera
-VERTEX_RS=/ws/src/tashi-vertex-rs
-export VERTEX_RS
 
 # Optional: link against a locally-mounted tashi-vertex-c instead of letting
 # CMake download the release archive (set TASHI_VERTEX_LOCAL_DIR via compose).
@@ -51,7 +49,6 @@ run_core() {
 build_ros() {
   echo "==> colcon build --packages-up-to vertex_ros2 vertex_fleet"
   cd /ws
-  # tashi-vertex-rs lives under src/ as a path dependency, not a colcon package;
   # --packages-up-to builds only the listed packages and their colcon deps.
   colcon build --packages-up-to vertex_ros2 vertex_fleet \
     --cmake-args -DCMAKE_BUILD_TYPE=Release
@@ -62,8 +59,8 @@ build_ros() {
 }
 
 # The colcon-installed vertex_node links libtashi-vertex.so but has no rpath to
-# it on Linux (tashi-vertex-rs's build.rs only sets an rpath on macOS). Locate
-# the .so produced during the cargo build and put its directory on
+# it on Linux (the tashi-vertex build script only sets an rpath on macOS).
+# Locate the .so produced during the cargo build and put its directory on
 # LD_LIBRARY_PATH; launched node processes inherit it.
 export_tv_libpath() {
   local so
@@ -80,24 +77,40 @@ export_tv_libpath() {
 gen_fixtures() {
   if [ ! -f "${TESSERA}/vertex_ros2/test/fixtures/peers.json" ]; then
     echo "==> generating test/fixtures/peers.json"
-    ( cd "${TESSERA}/vertex_ros2/test" && VERTEX_RS="${VERTEX_RS}" bash gen_test_keys.sh )
+    ( cd "${TESSERA}/vertex_ros2/test" && bash gen_test_keys.sh )
   fi
 }
 
 gen_peers4() {
   if [ ! -f "${TESSERA}/vertex_ros2/test/simulation/fixtures/peers4.json" ]; then
     echo "==> generating simulation fixtures/peers4.json"
-    ( VERTEX_RS="${VERTEX_RS}" bash \
-        "${TESSERA}/vertex_ros2/test/simulation/fixtures/gen_peers4.sh" )
+    ( bash "${TESSERA}/vertex_ros2/test/simulation/fixtures/gen_peers4.sh" )
   fi
 }
 
 gen_peers5() {
   if [ ! -f "${TESSERA}/vertex_ros2/test/simulation_arena/fixtures/peers5.json" ]; then
     echo "==> generating simulation fixtures/peers5.json"
-    ( VERTEX_RS="${VERTEX_RS}" bash \
-        "${TESSERA}/vertex_ros2/test/simulation_arena/fixtures/gen_peers5.sh" )
+    ( bash "${TESSERA}/vertex_ros2/test/simulation_arena/fixtures/gen_peers5.sh" )
   fi
+}
+
+AIRGROUND="${TESSERA}/vertex_ros2/test/simulation_airground"
+
+gen_peers_airground() {
+  if [ ! -f "${AIRGROUND}/fixtures/peers_airground.json" ]; then
+    echo "==> generating simulation fixtures/peers_airground.json"
+    ( bash "${AIRGROUND}/fixtures/gen_peers_airground.sh" )
+  fi
+}
+
+# The drones are native Rust binaries, not colcon packages: they link
+# tashi-vertex directly and know nothing about ROS, so colcon never sees them
+# and they need their own cargo build. Built for the container's arch here,
+# which is also why a host-built binary is no use inside it.
+build_air_agent() {
+  echo "==> cargo build air_agent (drone-side Vertex agent, no ROS)"
+  ( cd "${AIRGROUND}/air_agent" && cargo build )
 }
 
 case "${1:-test}" in
@@ -173,6 +186,20 @@ case "${1:-test}" in
     python3 "${TESSERA}/vertex_ros2/test/simulation_arena/nodes/test_arena_fsm.py"
     echo "==> launch_test: arena exploration (5x vertex_node + coordinator + mock_pioneer)"
     launch_test "${TESSERA}/vertex_ros2/test/simulation_arena/arena_exploration.launch_test.py"
+
+    # --- simulation 3: the mixed air/ground fleet ---
+    build_air_agent
+    gen_peers_airground
+    echo "==> airground_fsm unit tests (simulation 3, Python fold)"
+    python3 "${AIRGROUND}/nodes/test_airground_fsm.py"
+    echo "==> cargo test air_agent (Rust fold; replays the same conformance fixture)"
+    ( cd "${AIRGROUND}/air_agent" && cargo test )
+    echo "==> launch_test: air/ground survey-and-sweep (2x tessera bot + 2x Rust drone)"
+    launch_test "${AIRGROUND}/airground.launch_test.py"
+    echo "==> launch_test: the lying drone (invents hazards that are not there)"
+    launch_test "${AIRGROUND}/lying_drone.launch_test.py"
+    echo "==> launch_test: false clear (hides a hazard that is)"
+    launch_test "${AIRGROUND}/false_clear.launch_test.py"
     ;;
   simarena)
     # Arena-exploration simulation (simulation 2), container side. Webots runs
@@ -185,6 +212,21 @@ case "${1:-test}" in
     echo "==> simarena: rosbridge (9090) + 5x vertex_node + 5x arena_coordinator"
     echo "    On the host: open vertex_ros2/test/simulation_arena/worlds/pioneer_arena.wbt in Webots."
     ros2 launch "${TESSERA}/vertex_ros2/test/simulation_arena/arena_exploration.launch.py"
+    ;;
+  simairground)
+    # Air/ground simulation (simulation 3), container side. Webots runs
+    # NATIVELY on the host with worlds/airground_arena.wbt; this serves
+    # rosbridge + 2x vertex_node + 2x ground_coordinator for the sweepers,
+    # and 2x air_agent (native Rust, no ROS) for the drones. Run with:
+    #   docker compose run --rm --service-ports sim simairground
+    build_ros
+    export_tv_libpath
+    build_air_agent
+    gen_peers_airground
+    echo "==> simairground: rosbridge (9090) + 2x vertex_node + 2x ground_coordinator"
+    echo "                  + 2x air_agent (drone links on 48633/48634)"
+    echo "    On the host: open vertex_ros2/test/simulation_airground/worlds/airground_arena.wbt in Webots."
+    ros2 launch "${AIRGROUND}/airground.launch.py"
     ;;
   simsoak)
     # Randomized back-to-back mission soak (N5). SOAK_SECONDS overrides length.
