@@ -14,6 +14,7 @@
     --v2: #96551c;
     --v3: #2b5d8a;
     --v4: #7a3e78;
+    --v5: #3b4a8c;
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
     --sans: "Avenir Next", "Segoe UI", -apple-system, "Helvetica Neue", sans-serif;
     --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
@@ -79,13 +80,18 @@
       <h3>Porting a broker-based fleet</h3>
       <p>Move an existing MQTT-coordinated fleet onto the ordered log: sort the topics, fold the votes away, keep the robots. Worked end to end as the arena-exploration simulation.</p>
     </a>
+    <a class="vol" style="--acc: var(--v5)" href="mixed-fleet.html">
+      <span class="n">Volume 5</span>
+      <h3>Mixed fleets</h3>
+      <p>Put a ROS&nbsp;2 robot and a bare Rust binary in one committee. Configuring tessera alongside the engine itself, the three traps in the engine API, and a live corroboration playground.</p>
+    </a>
   </div>
-  <div class="order"><b>Reading order.</b> Study 1&nbsp;→&nbsp;2&nbsp;→&nbsp;3. In a hurry? Volume&nbsp;2 stands alone: start there and return to Volume&nbsp;1 when you design a protocol of your own. Volume&nbsp;3 is only for processes that cannot be ROS&nbsp;2 nodes. Volume&nbsp;4 is for teams arriving with a broker-based fleet already in production.</div>
+  <div class="order"><b>Reading order.</b> Study 1&nbsp;→&nbsp;2&nbsp;→&nbsp;3. In a hurry? Volume&nbsp;2 stands alone: start there and return to Volume&nbsp;1 when you design a protocol of your own. Volume&nbsp;3 is only for processes that cannot be ROS&nbsp;2 nodes. Volume&nbsp;4 is for teams arriving with a broker-based fleet already in production. Volume&nbsp;5 is for fleets where not every participant can be a ROS&nbsp;2 node; read Volume&nbsp;3 first.</div>
 
-  <h2>The worked examples: two consensus-coordinated robot fleets</h2>
-  <p>The repository ships two complete reference applications used throughout the tutorials. The first: four simulated robots exploring routes to a goal, coordinating exclusively through consensus. It demonstrates exclusive task claims, blocked-task recovery, winner convergence, lease timeouts for crashed robots, and fleet-wide resets, all built on the same <code>vertex_fleet</code> API you will use, and all covered by tests that run in CI, including fault injection and a randomized mission soak. The second: five Pioneer 3-AT robots sweeping an outdoor arena, ported from an MQTT-coordinated stack (Volume&nbsp;4), demonstrating consensus-folded health verdicts, silence leases, and trust-gated detections.</p>
+  <h2>The worked examples: three consensus-coordinated robot fleets</h2>
+  <p>The repository ships three complete reference applications used throughout the tutorials. The first: four simulated robots exploring routes to a goal, coordinating exclusively through consensus. It demonstrates exclusive task claims, blocked-task recovery, winner convergence, lease timeouts for crashed robots, and fleet-wide resets, all built on the same <code>vertex_fleet</code> API you will use, and all covered by tests that run in CI, including fault injection and a randomized mission soak. The second: five Pioneer 3-AT robots sweeping an outdoor arena, ported from an MQTT-coordinated stack (Volume&nbsp;4), demonstrating consensus-folded health verdicts, silence leases, and trust-gated detections. The third (Volume&nbsp;5): two of those robots plus two drones that link the consensus engine directly with no ROS in the process, sharing one ordered log, demonstrating a dependency between tiers and the difference between what a peer said and what the fleet has corroborated.</p>
   <ul class="res">
-    <li><a href="https://github.com/tashigit/tessera/tree/main/vertex_ros2/test/simulation">The simulations</a> — architecture, protocols, worlds, and the full test matrix (route scenario in <code>vertex_ros2/test/simulation/</code>, arena scenario in <code>vertex_ros2/test/simulation_arena/</code>)</li>
+    <li><a href="https://github.com/tashigit/tessera/tree/main/vertex_ros2/test/simulation">The simulations</a> — architecture, protocols, worlds, and the full test matrix (route scenario in <code>vertex_ros2/test/simulation/</code>, arena scenario in <code>vertex_ros2/test/simulation_arena/</code>, air/ground scenario in <code>vertex_ros2/test/simulation_airground/</code>)</li>
     <li><a href="https://github.com/tashigit/tessera/tree/main/vertex_fleet">The vertex_fleet library</a> — the base classes and the minimal ledger example (<code>vertex_fleet/</code>)</li>
     <li><a href="https://github.com/tashigit/tessera/blob/main/CONSUMING.md">CONSUMING.md</a> — workspace setup, build, first mesh, first agent</li>
     <li><a href="https://github.com/tashigit/tessera/blob/main/vertex_ros2/README.md">Engine contract reference</a> — topics, message types, parameters, lifecycle</li>

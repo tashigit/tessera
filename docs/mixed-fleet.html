@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A mixed fleet: tessera and the engine in one committee</title>
+<style>
+  :root {
+    --paper: #f6f7fa;
+    --ink: #1f2230;
+    --muted: #5e6478;
+    --line: #dde0ea;
+    --accent: #3b4a8c;
+    --accent-soft: #e6e9f6;
+    --code-bg: #1c1f2b;
+    --code-ink: #dfe2ee;
+    --code-dim: #8b90a6;
+    --good: #1a7f37;
+    --bad: #b3402f;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    --sans: "Avenir Next", "Segoe UI", -apple-system, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.65; }
+  .wrap { display: flex; max-width: 1200px; margin: 0 auto; }
+
+  nav { width: 232px; flex: none; position: sticky; top: 0; align-self: flex-start;
+    max-height: 100vh; overflow-y: auto; padding: 40px 20px 40px 28px;
+    font-family: var(--sans); font-size: 13px; border-right: 1px solid var(--line);
+    box-sizing: border-box; }
+  nav .brand { font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    font-size: 11px; color: var(--accent); margin-bottom: 18px; }
+  nav a { display: block; color: var(--muted); text-decoration: none;
+    padding: 5px 8px; border-left: 2px solid transparent; margin-left: -10px; line-height: 1.35; }
+  nav a:hover { color: var(--ink); }
+  nav a:focus-visible { outline: 2px solid var(--accent); border-radius: 3px; }
+
+  main { flex: 1; min-width: 0; padding: 48px 56px 120px; box-sizing: border-box; }
+  @media (max-width: 900px) { nav { display: none; } main { padding: 32px 20px 80px; } }
+
+  header.doc h1 { font-family: var(--sans); font-weight: 700; font-size: 34px;
+    line-height: 1.15; letter-spacing: -0.015em; margin: 8px 0 14px; text-wrap: balance; }
+  .eyebrow { font-family: var(--sans); font-size: 12px; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  .lede { font-size: 19px; color: #443c47; max-width: 62ch; }
+  h2 { font-family: var(--sans); font-weight: 700; font-size: 24px;
+    letter-spacing: -0.01em; margin: 64px 0 8px; text-wrap: balance; scroll-margin-top: 24px; }
+  h2 .stepno { font-size: 12px; font-weight: 600; letter-spacing: .12em;
+    color: var(--accent); text-transform: uppercase; display: block; margin-bottom: 4px; }
+  h3 { font-family: var(--sans); font-size: 17px; margin: 30px 0 6px; scroll-margin-top: 24px; }
+  p, ul, ol { max-width: 66ch; }
+  li { margin-bottom: 5px; }
+  a { color: var(--accent); }
+  strong { color: #171219; }
+  .note { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    background: var(--accent-soft); padding: 12px 16px; max-width: 62ch;
+    font-size: 15.5px; border-radius: 0 6px 6px 0; margin: 18px 0; }
+  .warstory { border-left-color: var(--bad); background: #f6e6e2; }
+
+  .tablewrap { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; font-family: var(--sans); font-size: 14px; min-width: 560px; }
+  th { text-align: left; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  th, td { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td code, p code, li code, .note code { font-family: var(--mono); font-size: .85em;
+    background: #eae5ec; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+
+  .code { position: relative; background: var(--code-bg); color: var(--code-ink);
+    border-radius: 8px; margin: 16px 0; font-size: 13.5px; }
+  .code .lang { position: absolute; top: 9px; left: 14px; font-family: var(--sans);
+    font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--code-dim); }
+  .code button.copy { position: absolute; top: 6px; right: 8px; font-family: var(--sans);
+    font-size: 11px; padding: 3px 10px; border-radius: 5px;
+    border: 1px solid #423947; background: transparent; color: var(--code-dim); cursor: pointer; }
+  .code button.copy:hover { color: var(--code-ink); border-color: var(--code-dim); }
+  .code button.copy:focus-visible { outline: 2px solid var(--accent); }
+  .code pre { margin: 0; padding: 34px 18px 16px; overflow-x: auto;
+    font-family: var(--mono); line-height: 1.55; }
+  .code .c { color: #8d8292; }
+  .code .k { color: #d9a3d0; }
+  .code .s { color: #a9c98e; }
+
+  .beforeafter { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+  @media (max-width: 760px) { .beforeafter { grid-template-columns: 1fr; } }
+  .ba { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 14px 16px;
+    font-family: var(--sans); font-size: 14px; }
+  .ba h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+  .ba.before h4 { color: var(--bad); }
+  .ba.after h4 { color: var(--good); }
+  .ba ul { padding-left: 18px; margin: 0; }
+
+  /* ---- health verdict playground ---- */
+  .sand { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 20px; margin: 22px 0; font-family: var(--sans); }
+  .sand h3 { margin: 0 0 2px; font-size: 16px; }
+  .sand .sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; max-width: 70ch; }
+  .sandgrid { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(250px, 1fr); gap: 16px; }
+  @media (max-width: 700px) { .sandgrid { grid-template-columns: 1fr; } }
+  .sand .loglist { font-family: var(--mono); font-size: 11.5px; background: var(--code-bg);
+    color: var(--code-dim); border-radius: 8px; padding: 10px 12px; height: 190px;
+    overflow-y: auto; line-height: 1.7; }
+  .sand .loglist .seq { color: #6d6172; }
+  .sand .loglist .applied { color: var(--code-ink); }
+  .sand .loglist .noop { text-decoration: line-through; opacity: .65; }
+  .sand .statebox { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+    font-size: 13.5px; background: #fbfafc; }
+  .sand .bot { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .sand .bot .who { margin-left: auto; font-family: var(--mono); font-size: 12px;
+    padding: 1px 8px; border-radius: 999px; color: #fff; }
+  .sand .bot .who.ok { background: var(--good); }
+  .sand .bot .who.out { background: var(--bad); }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .sand button.act { font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+    padding: 5px 11px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); cursor: pointer; }
+  .sand button.act:hover { border-color: var(--accent); color: var(--accent); }
+  .sand button.act:focus-visible { outline: 2px solid var(--accent); }
+  .sand .toast { font-size: 12.5px; min-height: 18px; margin-top: 8px; color: var(--muted); }
+
+  .checklist { list-style: none; padding: 0; max-width: 70ch; font-family: var(--sans); font-size: 15px; }
+  .checklist li { display: flex; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); align-items: baseline; }
+  .checklist input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; transform: translateY(2px); }
+  .checklist label { cursor: pointer; }
+  .checklist input:checked + label { color: var(--muted); text-decoration: line-through; }
+
+  .kicker { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .series { font-family: var(--sans); font-size: 13px; border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 14px; margin: 18px 0; background: #fff; max-width: 62ch; }
+  .series b { color: var(--accent); }
+  .series a { text-decoration: none; }
+
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-family: var(--sans); font-size: 13px; color: var(--muted); max-width: 66ch; }
+
+  /* volume 5 additions: the two-tier diagram and the viewer legend key */
+  .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+  @media (max-width: 700px) { .tiers { grid-template-columns: 1fr; } }
+  .tier { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 14px 16px; border-top: 3px solid var(--accent); }
+  .tier.air { border-top-color: #7b5cc4; }
+  .tier h4 { font-family: var(--sans); font-size: 14px; margin: 0 0 6px; }
+  .tier p { font-size: 14px; margin: 0 0 8px; max-width: none; }
+  .tier ul { font-size: 13.5px; margin: 0; padding-left: 18px; color: var(--muted); }
+  .legend { border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 4px 0; margin: 16px 0; }
+  .legend .row { display: flex; gap: 12px; align-items: flex-start;
+    padding: 9px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .legend .row:last-child { border-bottom: none; }
+  .legend .sw { width: 20px; height: 20px; border-radius: 4px; flex: none; margin-top: 2px; }
+  .legend .sw.diamond { border-radius: 3px; transform: rotate(45deg) scale(.8); }
+  .legend .what { font-family: var(--sans); font-weight: 600; font-size: 13px;
+    width: 150px; flex: none; }
+  .legend .why { color: var(--muted); font-size: 13.5px; }
+  @media (max-width: 620px) {
+    .legend .row { flex-wrap: wrap; }
+    .legend .what { width: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav aria-label="Contents">
+  <div class="brand">Tessera / Mixed fleet</div>
+  <a href="#fit">Where this fits</a>
+  <a href="#building">What we are building</a>
+  <a href="#twoways">Two ways into one committee</a>
+  <a href="#s1">1 &middot; Pin the engine version</a>
+  <a href="#s2">2 &middot; One committee, mixed members</a>
+  <a href="#s3">3 &middot; Join from plain Rust</a>
+  <a href="#traps">Three traps in the engine API</a>
+  <a href="#s4">4 &middot; The shared protocol</a>
+  <a href="#evidence">Evidence, live</a>
+  <a href="#s5">5 &middot; Keep the folds honest</a>
+  <a href="#run">6 &middot; Run it</a>
+  <a href="#legend">Reading the viewer</a>
+  <a href="#pitfalls">Pitfalls</a>
+  <a href="#checklist">Checklist</a>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">Tutorial &middot; Volume 5 &middot; Mixed fleets</div>
+  <h1>A mixed fleet: tessera and the engine in one committee</h1>
+  <p class="lede">Every volume so far has one kind of participant: a ROS&nbsp;2 node talking to <code>vertex_node</code>. Real fleets are rarely so tidy. This volume puts two Pioneer sweepers and two DJI drones in a single Vertex committee, where the robots join through tessera and the drones link the consensus engine straight into a Rust binary with no ROS in the process at all. They share exactly two things, and everything else about them differs.</p>
+  <div class="series"><b>The series.</b> 1&nbsp;&middot;&nbsp;<a href="concepts.html">Concepts and protocol design</a> &nbsp;&rarr;&nbsp; 2&nbsp;&middot;&nbsp;<a href="fleet-api.html">The fleet API</a> &nbsp;&rarr;&nbsp; 3&nbsp;&middot;&nbsp;<a href="crate-level.html">Crate-level internals</a> &nbsp;&rarr;&nbsp; 4&nbsp;&middot;&nbsp;<a href="porting.html">Porting</a> &nbsp;&rarr;&nbsp; 5&nbsp;&middot;&nbsp;Mixed fleets (you are here). Volume&nbsp;3 is the prerequisite that matters: this volume uses the engine directly and assumes you have read its concurrency contract.</div>
+  <p class="kicker">You need: the tessera workspace built, Docker for the headless run, and optionally Webots R2025a for the live world. The worked example is <code>vertex_ros2/test/simulation_airground/</code>.</p>
+</header>
+
+<h2 id="fit">Where this fits</h2>
+<p>Volume&nbsp;3 showed how to embed <code>vertex_core</code> in a process that cannot be a ROS&nbsp;2 node. It stopped at a single process. The obvious next question is the one this volume answers: if one member of your fleet is not a ROS node, can it still be a full peer of the ones that are, and how would you know?</p>
+<p>The answer has to be demonstrated rather than asserted, because the failure mode is silent. Two implementations of the same protocol can agree for an hour and then diverge on one unusual record, and nothing in the transport will tell you. So the example is built to make agreement checkable, and most of this volume is about that checkability rather than about drones.</p>
+
+<h2 id="building">What we are building</h2>
+<p>An arena, fifty metres square, with trees, rocks, a herd of deer and one crater. Twelve ground sectors to sweep, grouped into six survey blocks. Four agents:</p>
+
+<div class="tiers">
+  <div class="tier">
+    <h4>Ground tier &mdash; two Pioneer 3-AT sweepers</h4>
+    <p>Ordinary tessera citizens, exactly as Volumes&nbsp;1 and&nbsp;2 describe.</p>
+    <ul>
+      <li>one <code>vertex_node</code> process each</li>
+      <li>a <code>VertexAgent</code> subclass folding <code>/vertex/event</code></li>
+      <li>a horizontal Sick LMS&nbsp;291 lidar, which cannot see a hole</li>
+    </ul>
+  </div>
+  <div class="tier air">
+    <h4>Air tier &mdash; two Mavic 2 PRO surveyors</h4>
+    <p>Native Rust binaries. No rclrs, no DDS, no message packages, no rosbridge.</p>
+    <ul>
+      <li><code>tashi-vertex</code> linked directly</li>
+      <li>their own fold, in Rust</li>
+      <li>a downward laser ranger, which can</li>
+    </ul>
+  </div>
+</div>
+
+<p>The asymmetry in those last two bullets is the whole scenario. A crater is invisible to a lidar mounted horizontally at 0.32&nbsp;m and unmistakable to a ranger looking straight down from twelve metres. So the ground tier depends on the air tier for information it cannot gather, and the ordered log is what turns that dependency into a map both robots agree on.</p>
+<p>Two properties fall out, and they are worth separating because only the first is about heterogeneity:</p>
+<ul>
+  <li><strong>Ground work is gated on air work.</strong> A sector is unclaimable until some drone has reported it surveyed. The sweepers visibly sit still at the start of a run, which is correct behaviour and not a stall. They are not waiting for a message; they are waiting for a position in an agreed history.</li>
+  <li><strong>Hazards need corroboration.</strong> One witness defers a sector. Two <em>distinct</em> witnesses condemn it. Consensus makes every peer agree on what was <em>said</em>. It does not make what was said <em>true</em>, and the gap between those two is where a protocol either has a rule or has a bug.</li>
+</ul>
+
+<h2 id="twoways">Two ways into one committee</h2>
+<p>Vertex does not know or care what language its peers are written in, or whether they have a ROS graph attached. A peer is a public key, a UDP address, and a process that signs events. Tessera is one way to be that process; linking the engine is another.</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th></th><th>Through tessera</th><th>Engine directly</th></tr></thead>
+  <tbody>
+    <tr><td>What runs</td><td><code>vertex_node</code> plus your agent</td><td>your binary, linking <code>tashi-vertex</code></td></tr>
+    <tr><td>Submit a record</td><td>publish on <code>/vertex/tx</code></td><td><code>engine.send_transaction(tx)</code></td></tr>
+    <tr><td>Receive the order</td><td>subscribe <code>/vertex/event</code></td><td><code>engine.recv_message().await</code></td></tr>
+    <tr><td>Lifecycle</td><td><code>/vertex/transition</code> service</td><td><code>Engine::start</code> and process exit</td></tr>
+    <tr><td>Fold enforced by</td><td><code>VertexAgent</code>, single mutation path</td><td>you, by construction</td></tr>
+    <tr><td>Costs you</td><td>a ROS 2 workspace</td><td>the concurrency contract in Volume 3</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Choose the second only when the first is genuinely unavailable: a flight controller you cannot put a ROS graph on, a vendor SDK that owns the main loop, a device too small for DDS. The engine path is not faster or purer. It is what you use when a ROS node is not an option, and it hands you three sharp edges that <code>vertex_core</code> would otherwise have handled. All three are in this volume.</p>
+
+<h2 id="s1"><span class="stepno">Step 1</span>Pin the engine version</h2>
+<p>This is the one thing a mixed fleet must get right, and it is the easiest to get wrong. Every peer has to link the same engine protocol version. A drone built against a different <code>tashi-vertex</code> than <code>vertex_node</code> will not form a committee with it, and the symptom is peers that never finalize rather than a clear error.</p>
+<p>So both sides read their version from the same place. <code>vertex_core</code> pins it exactly:</p>
+
+<div class="code"><span class="lang">toml &mdash; vertex_core/Cargo.toml</span><button class="copy">Copy</button><pre>
+[dependencies]
+tashi-vertex = "=0.14.0"
+</pre></div>
+
+<p>and the drone binary repeats that exact requirement:</p>
+
+<div class="code"><span class="lang">toml &mdash; air_agent/Cargo.toml</span><button class="copy">Copy</button><pre>
+[dependencies]
+# The SAME pinned version vertex_core uses. Both tiers must link one engine
+# protocol version or they cannot form a committee. Deliberately `=`, not `^`.
+tashi-vertex = "=0.14.0"
+tokio = { version = "1", features = ["rt", "macros", "net", "time", "io-util", "sync"] }
+serde_json = "1"
+</pre></div>
+
+<div class="note"><strong>Why <code>=</code> and not <code>^</code>.</strong> A caret requirement lets a routine <code>cargo update</code> move the engine underneath a release. With an exact requirement the version lives in the tree, so checking out a tag reproduces the build, and the engine version is not something recorded out of band and hoped for. The <code>tashi-vertex</code> crate in turn pins the <code>tashi-vertex-c</code> release its build script downloads, so one tag identifies the whole chain.</div>
+
+<div class="note warn"><strong>The FFI types are not interchangeable across versions.</strong> If cargo resolves two different <code>tashi-vertex</code> versions in one dependency graph, you get two incompatible copies of <code>KeySecret</code>, <code>Engine</code> and friends, and the mismatch surfaces as a type error that says nothing about versions. Match the pin exactly.</div>
+
+<h2 id="s2"><span class="stepno">Step 2</span>One committee, mixed members</h2>
+<p>The committee is four peers, so it tolerates one Byzantine or crashed member under <code>n&nbsp;&ge;&nbsp;3f&nbsp;+&nbsp;1</code>. Nothing in the key material says which tier a peer belongs to, and that is the point: the engine cannot tell them apart.</p>
+
+<div class="code"><span class="lang">json &mdash; fixtures/peers_airground.json</span><button class="copy">Copy</button><pre>
+[
+  {"name": "bot_0",   "tier": "ground", "secret": "&lt;base58&gt;", "public": "&lt;base58&gt;", "addr": "127.0.0.1:47631"},
+  {"name": "bot_1",   "tier": "ground", "secret": "&lt;base58&gt;", "public": "&lt;base58&gt;", "addr": "127.0.0.1:47632"},
+  {"name": "drone_0", "tier": "air",    "secret": "&lt;base58&gt;", "public": "&lt;base58&gt;", "addr": "127.0.0.1:47633"},
+  {"name": "drone_1", "tier": "air",    "secret": "&lt;base58&gt;", "public": "&lt;base58&gt;", "addr": "127.0.0.1:47634"}
+]
+</pre></div>
+
+<p>The <code>tier</code> field is for the launch file's benefit, deciding what to start for each peer. The engine never sees it. Generate the file with <code>fixtures/gen_peers_airground.sh</code>, which uses <code>vertex_core</code>'s <code>key-generate</code> example so nothing outside the checkout is needed.</p>
+
+<p>The launch file then starts two quite different things from one list:</p>
+
+<div class="code"><span class="lang">python &mdash; airground.launch.py, condensed</span><button class="copy">Copy</button><pre>
+for me in BOTS:                       # ground tier: tessera
+    ns = f"/{me}"
+    actions.append(Node(
+        package="vertex_ros2", executable="vertex_node",
+        remappings=[(f"/vertex/{t}", f"{ns}/vertex/{t}") for t in CONTRACT_TOPICS],
+        parameters=[{
+            "vertex.bind_address": peers[me]["addr"],
+            "vertex.secret_key_path": key_file(peers[me]["secret"]),
+            "vertex.peers": peer_specs(peers, me),   # "&lt;public&gt;@&lt;addr&gt;", the others
+            "options.heartbeat_us": 50000,
+        }]))
+    actions.append(Node(executable=COORDINATOR, namespace=ns,
+                        parameters=[{"agent_id": me, "agents": AGENTS, **GRID}]))
+
+for me in DRONES:                     # air tier: no ROS at all
+    cmd = [AIR_AGENT, "--id", me,
+           "--bind", peers[me]["addr"],
+           "--key", peers[me]["secret"],
+           "--link", f"0.0.0.0:{LINK_PORT[me]}"]
+    for spec in peer_specs(peers, me):
+        cmd += ["--peer", spec]
+    actions.append(ExecuteProcess(cmd=cmd))
+</pre></div>
+
+<div class="note">Note <code>ExecuteProcess</code>, not <code>Node</code>. The drone agents are not ROS nodes and launch treats them as plain processes. They appear in the same launch description purely so one command brings up the whole fleet; there is no ROS relationship between them and anything else.</div>
+
+<h2 id="s3"><span class="stepno">Step 3</span>Join from plain Rust</h2>
+<p>Five calls put you in the committee. <code>Peers</code> collects who is out there, including yourself; <code>Context</code> owns the async runtime the C library uses; <code>Socket</code> binds your UDP address; <code>Options</code> carries the tunables; <code>Engine::start</code> begins participating.</p>
+
+<div class="code"><span class="lang">rust &mdash; air_agent/src/main.rs, the bring-up</span><button class="copy">Copy</button><pre>
+use tashi_vertex::{Context, Engine, KeyPublic, KeySecret, Message, Options, Peers,
+                   Socket, Transaction};
+
+// Everyone else, then yourself. The engine derives the session size from the
+// set, and n >= 3f + 1 applies to the total including you.
+let mut peers = Peers::with_capacity(args.peers.len() + 1)?;
+for (addr, public) in &amp;args.peers {
+    peers.insert(addr, public, Default::default())?;
+}
+peers.insert(&amp;args.bind, &amp;args.key.public(), Default::default())?;
+
+let context = Context::new()?;
+let socket = Socket::bind(&amp;context, &amp;args.bind).await?;
+
+let mut options = Options::default();
+// Match what the launch file gives vertex_node, so every peer in the mesh
+// gossips at the same cadence.
+options.set_heartbeat_us(50_000);
+
+let engine = Rc::new(Engine::start(&amp;context, socket, options, &amp;args.key, peers, false)?);
+</pre></div>
+
+<p>That final <code>false</code> is <code>joining_running_session</code>. It stays false here because all four peers start together. Set it true only when a peer joins a session that is already producing events, and read the safe-usage envelope in <code>vertex_ros2/README.md</code> before you do.</p>
+
+<p>Submitting a record is a plain call, not a future:</p>
+
+<div class="code"><span class="lang">rust &mdash; one transaction</span><button class="copy">Copy</button><pre>
+fn submit(engine: &amp;Engine, rec: &amp;serde_json::Value) {
+    // serde_json's default Map is a BTreeMap, so this is sorted-key compact
+    // JSON: byte-identical to vertex_fleet.state.encode on the Python side.
+    let bytes = rec.to_string().into_bytes();
+    let mut tx = Transaction::allocate(bytes.len());
+    tx.copy_from_slice(&amp;bytes);
+    if let Err(e) = engine.send_transaction(tx) {
+        eprintln!("send_transaction failed: {e:?}");
+    }
+}
+</pre></div>
+
+<div class="note"><strong>Canonical bytes matter more than you would think.</strong> Both tiers must serialize a given record to the same bytes, or the two folds will disagree about duplicate suppression even when their rules are identical. Python's <code>encode</code> uses sorted keys and compact separators; <code>serde_json</code>'s default map is a <code>BTreeMap</code>, which produces exactly that. Enable its <code>preserve_order</code> feature and you break the property silently.</div>
+
+<h2 id="traps">Three traps in the engine API</h2>
+<p>Volume&nbsp;3 documents the concurrency contract. Here is what it costs in practice, because all three of these cost me a debugging session.</p>
+
+<h3>1. <code>recv_message()</code> is not cancellation-safe</h3>
+<p>Its future registers a pointer to itself with the C library on first poll. Drop it mid-flight, which is exactly what <code>tokio::select!</code> does to a losing branch, and a later callback writes into freed memory. It does not fail at the call site. It surfaces as heap corruption far away:</p>
+
+<div class="code"><span class="lang">what it actually looks like</span><button class="copy">Copy</button><pre>
+malloc(): unsorted double linked list corrupted
+[air_agent] process has died, exit code -6
+</pre></div>
+
+<p>The fix is the shape <code>vertex_core</code> already uses. The handles are <code>!Send</code>, so a current-thread runtime and a <code>LocalSet</code> with two cooperative tasks over an <code>Rc&lt;Engine&gt;</code>: a receive loop that is never cancelled, and a control loop that selects only over cancellation-safe futures.</p>
+
+<div class="code"><span class="lang">rust &mdash; the two-task shape</span><button class="copy">Copy</button><pre>
+// Task 1: never cancelled. The ONLY writer to the folded state, which is the
+// same single-mutation-path rule VertexAgent gives you for free.
+async fn recv_loop(engine: Rc&lt;Engine&gt;, state: Rc&lt;RefCell&lt;AirGroundState&gt;&gt;) {
+    loop {
+        match engine.recv_message().await {
+            Ok(Some(Message::Event(ev))) =&gt; {
+                let mut st = state.borrow_mut();
+                for payload in ev.transactions() {
+                    if let Ok(rec) = serde_json::from_slice(payload) { st.apply(&amp;rec); }
+                }
+            }
+            Ok(Some(Message::SyncPoint(_))) =&gt; {}
+            Ok(None) | Err(_) =&gt; return,
+        }
+    }
+}
+
+// Task 2: every future here is cancellation-safe (a timer, an accept, a
+// buffered line read). send_transaction is a plain call, so proposing from
+// here needs no channel back to task 1.
+let local = tokio::task::LocalSet::new();
+local.spawn_local(recv_loop(Rc::clone(&amp;engine), Rc::clone(&amp;state)));
+local.run_until(control_loop(engine, state, listener)).await;
+</pre></div>
+
+<h3>2. Nothing gives you an rpath</h3>
+<p>The <code>tashi-vertex</code> build script adds an rpath to its own test and example binaries, not to yours. Your binary links <code>libtashi-vertex</code> and then cannot find it at load time. <code>cargo test</code> and <code>cargo run</code> hide this by injecting a library path, so it appears only when something else executes the binary, which for us was the launch file:</p>
+
+<div class="code"><span class="lang">the symptom</span><button class="copy">Copy</button><pre>
+dyld[49198]: Library not loaded: @rpath/libtashi-vertex.dylib
+  Reason: no LC_RPATH's found
+</pre></div>
+
+<p>Copy <code>vertex_core/build.rs</code> into your crate. It locates the library under the shared target directory and bakes an absolute rpath plus <code>$ORIGIN</code>-relative fallbacks. On Linux you can instead export <code>LD_LIBRARY_PATH</code> the way <code>docker/entrypoint.sh</code> does in <code>export_tv_libpath</code>.</p>
+
+<h3>3. You own the single-mutation-path rule now</h3>
+<p><code>VertexAgent</code> enforces it structurally: shared state changes in the event callback and nowhere else. Off the ROS path nothing stops you mutating the fold from a timer, and if you do, your peer will drift from the fleet in a way no test of your own will catch. Keeping the receive loop the only writer, as above, is what replaces the enforcement.</p>
+
+<h2 id="s4"><span class="stepno">Step 4</span>The shared protocol</h2>
+<p>Both tiers fold the same records. Agent ids are strings rather than the integers the earlier simulations used, because in a mixed fleet the id has to say which tier a peer is on.</p>
+
+<div class="code"><span class="lang">jsonc &mdash; the record set</span><button class="copy">Copy</button><pre>
+{ "op": "survey_claim", "agent": "drone_0", "block": "B03", "epoch": 0 }
+{ "op": "surveyed",     "agent": "drone_0", "block": "B03",
+                        "cells": ["S06", "S07"], "epoch": 0 }
+{ "op": "hazard",       "agent": "drone_0", "cell": "S05", "kind": "pit", "epoch": 0 }
+{ "op": "corroborate",  "agent": "bot_1",   "cell": "S05", "epoch": 0 }
+{ "op": "claim",        "agent": "bot_0",   "sector": "S06", "epoch": 0 }
+{ "op": "explored",     "agent": "bot_0",   "sector": "S06", "epoch": 0 }
+{ "op": "abandon",      "agent": "bot_0",   "sector": "S06", "epoch": 0 }
+{ "op": "rtb",          "agent": "drone_0", "epoch": 0 }
+{ "op": "ready",        "agent": "drone_0", "epoch": 0 }
+{ "op": "health",       "agent": "drone_1", "seq": 41, "ok": true, "epoch": 0 }
+{ "op": "suspect",      "agent": "bot_0",   "victim": "drone_1", "seen_seq": 41, "epoch": 0 }
+{ "op": "reset",        "epoch": 1 }
+</pre></div>
+
+<p>Six rules turn those into shared state. The first two are ordinary; the third is the one worth stealing.</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Rule</th><th>What it buys</th></tr></thead>
+  <tbody>
+    <tr><td>Air blocks and ground sectors are two claim namespaces under one exclusivity rule. First claim in consensus order wins; an agent holds at most one thing.</td><td>The same primitive serves two vehicle classes with no special-casing.</td></tr>
+    <tr><td>A sector is unclaimable until a drone reports it <code>surveyed</code>.</td><td>A real dependency between tiers, ordered by the log rather than by wall clock.</td></tr>
+    <tr><td><strong>A <code>hazard</code> is provisional. A second <em>distinct</em> agent promotes it to confirmed, which condemns the sector.</strong></td><td>Separates agreement from truth. A peer with valid signatures can say anything; this decides what the fleet acts on.</td></tr>
+    <tr><td><code>rtb</code> releases a drone's block and grounds it until <code>ready</code>.</td><td>A lease, motivated by battery instead of by silence.</td></tr>
+    <tr><td><code>health</code> beacons and the <code>suspect</code> silence lease apply uniformly across tiers.</td><td>A bot may suspect a drone and a drone may suspect a bot. The fold does not distinguish them.</td></tr>
+    <tr><td>Done when every block is surveyed and every sector is explored or condemned.</td><td>A termination condition spanning both tiers.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Note that <code>hazard</code> and <code>corroborate</code> fold <em>identically</em>. What matters is how many distinct agents have vouched for a cell, not which verb carried the claim. That is why a bot stuck in a crater and a drone seeing one from above are interchangeable as evidence, and why the rule needs no notion of which tier is more trustworthy.</p>
+
+<h2 id="evidence">Evidence, live</h2>
+<div class="sand" id="sandbox">
+  <h3>Corroboration playground</h3>
+  <div class="sub">The real evidence rules from the fold, mirrored in your browser. Sector S05 has a crater; nothing else does. Try reporting a hazard from <code>drone_0</code> twice and watch the second one do nothing, then add a report from any other agent and watch the sector condemn. Then try condemning a sector after a bot has already explored it.</div>
+  <div class="sandgrid">
+    <div class="loglist" id="sblog" aria-live="polite"></div>
+    <div>
+      <div class="statebox" id="sbstate"></div>
+      <div class="toast" id="sbtoast"></div>
+    </div>
+  </div>
+  <div class="btnrow" id="sbbtns"></div>
+</div>
+
+<h2 id="s5"><span class="stepno">Step 5</span>Keep the folds honest</h2>
+<p>The fold now exists more than once: Python for the robots, Rust for the drones, and a third copy in JavaScript so the viewer can decode the event stream itself rather than trust a summary. Three copies of a rule is precisely how a protocol drifts, and the drift is silent.</p>
+<p>So all three are pinned to one file. <code>fixtures/conformance.json</code> holds a scripted record log and the canonical state snapshot after <em>every</em> record:</p>
+
+<div class="code"><span class="lang">json &mdash; fixtures/conformance.json, shape</span><button class="copy">Copy</button><pre>
+{
+  "geometry":    { "nx": 4, "ny": 3, "cell_w": 10.0, "block_w": 2, ... },
+  "sectors":     ["S00", "S01", ...],
+  "blocks":      ["B00", ...],
+  "block_cells": { "B00": ["S00", "S01"], ... },
+  "log":         [ {"op": "health", "agent": "bot_0", "seq": 0, "ok": true, "epoch": 0}, ... ],
+  "snapshots":   [ { "claimed": {}, "surveyed": [], ... }, ... ]
+}
+</pre></div>
+
+<p>Each implementation replays it and compares after each record, so a divergence fails at the record that caused it instead of at the end of a run:</p>
+
+<div class="code"><span class="lang">shell &mdash; one fixture, three languages</span><button class="copy">Copy</button><pre>
+python3 nodes/test_airground_fsm.py        # the robots' fold
+(cd air_agent &amp;&amp; cargo test)               # the drones' fold
+node viewer/airground_fold.test.js         # the viewer's fold
+</pre></div>
+
+<p>Regenerate with <code>python3 fixtures/gen_conformance.py</code> after any intentional change, and read the diff carefully: a change there is a change to the protocol every tier implements.</p>
+
+<div class="note"><strong>Write the log to include records that should do nothing.</strong> Half the value is in the rejections: a claim before its survey landed, a survey report from a peer that does not hold the block, a stale health beacon, a suspicion voided by a late beacon, a duplicate hazard from one agent. An implementation that accepts too much passes a happy-path fixture easily.</div>
+
+<div class="note warn"><strong>Keep the snapshot minimal and canonical.</strong> Sort every collection, and keep anything view-specific out of it. Our viewer tracks per-sector provenance for its inspector, and that deliberately sits outside the snapshot so it cannot force the other two implementations to change.</div>
+
+<h2 id="run"><span class="stepno">Step 6</span>Run it</h2>
+<p>Headless, no Webots, everything asserted:</p>
+
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+docker compose run --rm sim simtest        # all three simulations
+</pre></div>
+
+<p>The air/ground portion runs both folds' unit tests, then three launch tests: the mixed fleet, a drone that invents hazards, and a drone that hides one. There is also an air-tier-only smoke test that needs neither ROS nor Docker, four real agents in a real committee over UDP, which is the fastest way to debug the Rust half:</p>
+
+<div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
+(cd air_agent &amp;&amp; cargo build)
+bash fixtures/gen_peers_airground.sh
+python3 nodes/smoke_air_committee.py
+</pre></div>
+
+<p>For the live world, the consensus graph runs in the container and Webots runs natively:</p>
+
+<div class="code"><span class="lang">shell &mdash; terminal 1, then terminal 2</span><button class="copy">Copy</button><pre>
+docker compose run --rm --service-ports sim simairground
+
+open -a Webots vertex_ros2/test/simulation_airground/worlds/airground_arena.wbt
+</pre></div>
+
+<p>What you should see, in order: the drones climb to twelve metres and begin lawnmower passes while <strong>the Pioneers sit still</strong>; sectors become claimable behind them and the sweeping starts; the crater is flagged with one witness and deliberately left for last; a Pioneer eventually drives into it, declines to credit the sector because it is below grade, reports being stuck, and that second witness condemns it. Expect a robot to finish the run sitting in the hole. That is the design working, not a failure.</p>
+
+<h2 id="legend">Reading the viewer</h2>
+<p><code>viewer/airground_viewer.html</code> is a self-contained page with no build step. It connects to the same rosbridge the Webots controllers use, decodes <code>/vertex/event</code> itself, and folds it in the browser. Open it and press Connect; the defaults match the live launch.</p>
+
+<div class="legend">
+  <div class="row"><span class="sw" style="background:#1a1f2b;border:1px solid #444"></span><span class="what">Dark sector</span><span class="why">Unsurveyed. No robot may claim it yet. The map starting dark and filling in behind the drones <em>is</em> the cross-tier gate, made visible.</span></div>
+  <div class="row"><span class="sw" style="background:#f4f4f4;border:1px solid #bbb"></span><span class="what">White sector</span><span class="why">Surveyed and free. A drone has cleared it and any healthy sweeper may claim it.</span></div>
+  <div class="row"><span class="sw" style="background:rgba(79,195,247,.28);border:1px dashed #4fc3f7"></span><span class="what">Dashed outline</span><span class="why">Claimed, in progress. Fill colour is the holder's identity colour.</span></div>
+  <div class="row"><span class="sw" style="background:#4fc3f7"></span><span class="what">Solid fill</span><span class="why">Explored. The colour says which robot covered it, read from that robot's own reported attribution rather than from a shared guess.</span></div>
+  <div class="row"><span class="sw" style="background:#3a0a0a;border:1px solid #7a1414"></span><span class="what">Dark red sector</span><span class="why">Condemned. A hazard here reached two distinct witnesses.</span></div>
+  <div class="row"><span class="sw" style="background:#e8a33d"></span><span class="what">Amber badge, 1</span><span class="why">A provisional hazard with one witness. The number is the witness count. Robots defer this sector rather than refusing it.</span></div>
+  <div class="row"><span class="sw" style="background:#e5484d"></span><span class="what">Red badge, 2</span><span class="why">Confirmed. Two distinct agents vouched, so the sector is condemned for the whole fleet.</span></div>
+  <div class="row"><span class="sw" style="background:rgba(176,124,240,.35);border:1px dashed #b07cf0"></span><span class="what">Tinted block</span><span class="why">An air block currently being surveyed, drawn under the sectors it covers, labelled with the drone flying it.</span></div>
+  <div class="row"><span class="sw" style="background:#4363d8;border-radius:50%"></span><span class="what">Circle</span><span class="why">A ground robot, at its live position.</span></div>
+  <div class="row"><span class="sw diamond" style="background:#b07cf0"></span><span class="what">Diamond</span><span class="why">A drone, so air never reads as ground at a glance. Its label shows altitude and what it is doing, and a dashed line runs to the waypoint it is flying to.</span></div>
+  <div class="row"><span class="sw" style="background:#fff;border:3px solid #35c463"></span><span class="what">Green ring</span><span class="why">Healthy, by that agent's own most recent beacon as folded by the fleet.</span></div>
+  <div class="row"><span class="sw" style="background:#fff;border:3px solid #e5484d"></span><span class="what">Red ring</span><span class="why">Unhealthy. Its claims have been released and new ones are refused.</span></div>
+</div>
+
+<p>Two panels are worth knowing about. <strong>Click any sector</strong> and the inspector narrates its history: which drone surveyed it, which robots raced for the claim and which lost, how many times each gave up, who witnessed a hazard and in what order, who finally reached the centre. A claim marked &ldquo;lost the race&rdquo; before any survey landed is the gate rejecting it, which is the scenario in miniature.</p>
+<p>The <strong>consensus panel</strong> puts all four agents' views side by side, and a cell is highlighted only when a disagreement persists for more than a second, so ordinary publish-timing skew is not mistaken for divergence. The drone columns are labelled <code>(fold)</code> because the drone <em>agents</em> publish nothing to ROS at all; that column is the page's own fold of the event stream. Their airframes do publish a pose, for observers only, which is why the diamonds move. Nothing reads that back and no decision depends on it.</p>
+
+<h2 id="pitfalls">Pitfalls I hit so you don't have to</h2>
+<ul>
+  <li><strong>A version mismatch does not announce itself.</strong> Peers simply never finalize. Check the pin on both sides first, before you debug anything else.</li>
+  <li><strong>Do not put <code>recv_message()</code> in a <code>select!</code>.</strong> The corruption appears somewhere unrelated, minutes later.</li>
+  <li><strong>Sample sensors continuously, not at waypoints.</strong> Our drones sampled the ranger once per waypoint arrival, which has a tolerance, so the single reading landed off-centre where a crater is shallow. They flew over real craters and reported clean ground.</li>
+  <li><strong>Reaching a sector is not the same as covering it.</strong> A robot that has fallen into a crater can be within the coverage radius of the centre and still have swept nothing. Ours credited the sector from inside the hole until its pose carried a real altitude and the coordinator learned to refuse while below grade.</li>
+  <li><strong>Not every obstacle is the one you modelled.</strong> A tree cluster stops a Pioneer just as well as a crater and no drone sees it from above. Without a path to condemnation, a robot claims, stalls, abandons and re-claims forever. Repeated first-hand failure has to count as evidence too.</li>
+  <li><strong>A warm build directory hides real breakage.</strong> Ours concealed a workspace that could not build from a clean checkout at all, for a week, while every local run passed. Wipe the volumes occasionally and find out what your CI already knows.</li>
+</ul>
+
+<h2 id="checklist">Mixed-fleet checklist</h2>
+<p class="kicker">Ticks persist while this page is open.</p>
+<ul class="checklist" id="cklist">
+  <li><input type="checkbox" id="m1"><label for="m1">Every peer links the identical <code>tashi-vertex</code> version, pinned with <code>=</code></label></li>
+  <li><input type="checkbox" id="m2"><label for="m2">One peers file lists all members; nothing in it tells the engine which tier a peer is on</label></li>
+  <li><input type="checkbox" id="m3"><label for="m3">Records serialize to identical bytes on every tier (sorted keys, compact separators)</label></li>
+  <li><input type="checkbox" id="m4"><label for="m4">The non-ROS peer runs <code>recv_message()</code> in a loop that is never cancelled</label></li>
+  <li><input type="checkbox" id="m5"><label for="m5">Its folded state has exactly one writer, the receive loop</label></li>
+  <li><input type="checkbox" id="m6"><label for="m6">Its binary can find <code>libtashi-vertex</code> when launched by something other than cargo</label></li>
+  <li><input type="checkbox" id="m7"><label for="m7">A conformance fixture pins every implementation of the fold, with rejections in the log</label></li>
+  <li><input type="checkbox" id="m8"><label for="m8">Any rule that turns a claim into an action distinguishes what was said from what is corroborated</label></li>
+  <li><input type="checkbox" id="m9"><label for="m9">The suite passes from a cold build, with build and install directories deleted</label></li>
+</ul>
+
+<footer>Volume 5 of the tessera tutorial series, written against tessera v0.1.0 and <code>tashi-vertex</code> 0.14.0. The worked example is <code>vertex_ros2/test/simulation_airground/</code>; its README carries the assertion tables and the parameter reference.</footer>
+</main>
+</div>
+
+<script>
+(() => {
+  // copy buttons
+  document.querySelectorAll('.code').forEach(box => {
+    const btn = box.querySelector('button.copy');
+    const pre = box.querySelector('pre');
+    if (!btn || !pre) return;
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(pre.textContent.trim());
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+      } catch (e) { btn.textContent = 'Select + copy'; }
+    });
+  });
+
+  // ---- corroboration playground -------------------------------------------
+  // The evidence and gating rules from the real fold, in the same order:
+  // AirGroundState._surveyed / _hazard / _claim / _explored.
+  const AGENTS = ['drone_0', 'drone_1', 'bot_0', 'bot_1'];
+  const COLOR = { drone_0: '#7b5cc4', drone_1: '#b06a2e', bot_0: '#3b4a8c', bot_1: '#1a7f37' };
+  const SECTORS = ['S04', 'S05'];      // one block's worth, B02
+  const CRATER = 'S05';                // physically real, for the "explored" case
+
+  const st = {};
+  function reset() {
+    st.surveyed = new Set();
+    st.claimed = {};
+    st.explored = new Set();
+    st.exploredBy = {};
+    st.hazards = {};                   // cell -> Set of distinct witnesses
+    st.confirmed = new Set();
+    st.unreachable = new Set();
+    log.length = 0;
+  }
+  const log = [];
+
+  // one witness is provisional, two DISTINCT witnesses confirm
+  function hazard(agent, cell) {
+    if (!SECTORS.includes(cell)) return 'not a sector here';
+    if (st.explored.has(cell)) return 'already covered, nothing to warn about';
+    const w = st.hazards[cell] || (st.hazards[cell] = new Set());
+    const fresh = !w.has(agent);
+    w.add(agent);
+    if (!fresh) return 'same agent again, still one witness';
+    if (w.size >= 2) {
+      st.confirmed.add(cell);
+      st.unreachable.add(cell);
+      delete st.claimed[cell];
+      return 'CONFIRMED by two distinct witnesses';
+    }
+    return 'provisional, needs a second witness';
+  }
+
+  function apply(rec) {
+    switch (rec.op) {
+      case 'surveyed':
+        for (const c of SECTORS) st.surveyed.add(c);
+        return 'both sectors now claimable';
+      case 'hazard':
+      case 'corroborate':
+        return hazard(rec.agent, rec.cell);
+      case 'claim':
+        if (!st.surveyed.has(rec.cell)) return 'refused: unsurveyed';
+        if (st.unreachable.has(rec.cell)) return 'refused: condemned';
+        if (st.explored.has(rec.cell)) return 'refused: already explored';
+        if (rec.cell in st.claimed) return 'refused: held by ' + st.claimed[rec.cell];
+        st.claimed[rec.cell] = rec.agent;
+        return 'claimed';
+      case 'explored':
+        if (st.claimed[rec.cell] !== rec.agent) return 'refused: not the holder';
+        st.explored.add(rec.cell);
+        st.exploredBy[rec.cell] = rec.agent;
+        delete st.claimed[rec.cell];
+        return 'covered';
+      case 'reset':
+        reset();
+        return 'wiped';
+      default: return 'unknown op';
+    }
+  }
+
+  const elLog = document.getElementById('sblog');
+  const elState = document.getElementById('sbstate');
+  const elToast = document.getElementById('sbtoast');
+  const elBtns = document.getElementById('sbbtns');
+
+  function push(rec) {
+    const note = apply(rec);
+    const noop = /^refused|^same agent|^already|^not a/.test(note);
+    log.push({ rec, note, noop });
+    if (log.length > 40) log.shift();
+    render(note);
+  }
+
+  function render(note) {
+    // Text nodes only; nothing here is ever parsed as markup.
+    elLog.textContent = '';
+    log.forEach((e, i) => {
+      const line = document.createElement('div');
+      line.className = e.noop ? 'noop' : 'applied';
+      const seq = document.createElement('span');
+      seq.className = 'seq';
+      seq.textContent = String(i).padStart(2, '0') + '  ';
+      line.appendChild(seq);
+      const body = e.rec.op === 'reset'
+        ? '— reset —'
+        : `${e.rec.agent || ''} ${e.rec.op}${e.rec.cell ? ' ' + e.rec.cell : ''}  · ${e.note}`;
+      line.appendChild(document.createTextNode(body));
+      elLog.appendChild(line);
+    });
+    elLog.scrollTop = elLog.scrollHeight;
+
+    elState.textContent = '';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-family:var(--sans);font-size:11px;letter-spacing:.1em;' +
+      'text-transform:uppercase;color:var(--muted);margin-bottom:8px';
+    title.textContent = 'Derived state — identical on every agent';
+    elState.appendChild(title);
+
+    for (const c of SECTORS) {
+      const row = document.createElement('div');
+      row.className = 'bot';
+      const name = document.createElement('span');
+      name.style.cssText = 'font-family:var(--mono);font-size:12px';
+      name.textContent = c + (c === CRATER ? '  (crater)' : '');
+      row.appendChild(name);
+
+      const tag = document.createElement('span');
+      tag.className = 'who';
+      let text, bg;
+      if (st.unreachable.has(c)) { text = 'condemned'; bg = 'var(--bad)'; }
+      else if (st.explored.has(c)) { text = 'explored · ' + st.exploredBy[c]; bg = 'var(--good)'; }
+      else if (c in st.claimed) { text = 'claimed · ' + st.claimed[c]; bg = COLOR[st.claimed[c]]; }
+      else if (st.surveyed.has(c)) { text = 'free'; bg = '#7a8296'; }
+      else { text = 'unsurveyed'; bg = '#454c60'; }
+      const wit = st.hazards[c] ? st.hazards[c].size : 0;
+      if (wit) text += '  ·  ' + wit + (wit === 1 ? ' witness' : ' witnesses');
+      tag.textContent = text;
+      tag.style.background = bg;
+      row.appendChild(tag);
+      elState.appendChild(row);
+    }
+
+    elToast.textContent = note || '';
+  }
+
+  function button(label, rec, hint) {
+    const b = document.createElement('button');
+    b.className = 'act';
+    b.type = 'button';
+    b.textContent = label;
+    if (hint) b.title = hint;
+    b.addEventListener('click', () => push(typeof rec === 'function' ? rec() : rec));
+    return b;
+  }
+
+  elBtns.appendChild(button('drone_0 surveys the block',
+    { op: 'surveyed', agent: 'drone_0' },
+    'Until this lands, no sector is claimable. That is the cross-tier gate.'));
+  for (const a of ['drone_0', 'drone_1', 'bot_0', 'bot_1']) {
+    elBtns.appendChild(button(`${a}: hazard in S05`,
+      { op: a.startsWith('drone') ? 'hazard' : 'corroborate', agent: a, cell: 'S05' },
+      'hazard and corroborate fold identically; only the count of distinct agents matters.'));
+  }
+  elBtns.appendChild(button('bot_0 claims S05', { op: 'claim', agent: 'bot_0', cell: 'S05' }));
+  elBtns.appendChild(button('bot_0 explored S05', { op: 'explored', agent: 'bot_0', cell: 'S05' },
+    'Try this before any hazard: a covered sector can no longer be condemned.'));
+  elBtns.appendChild(button('bot_1 claims S04', { op: 'claim', agent: 'bot_1', cell: 'S04' }));
+  elBtns.appendChild(button('reset', { op: 'reset' }));
+
+  reset();
+  render('Nothing surveyed yet. The robots have nothing they are allowed to claim.');
+
+  // ---- checklist persistence, matching the other volumes ----
+  const KEY = 'tessera-vol5-checklist';
+  const boxes = document.querySelectorAll('#cklist input[type=checkbox]');
+  let saved = {};
+  try { saved = JSON.parse(sessionStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+  boxes.forEach(b => {
+    if (saved[b.id]) b.checked = true;
+    b.addEventListener('change', () => {
+      saved[b.id] = b.checked;
+      try { sessionStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+    });
+  });
+})();
+</script>
+</body>
+</html>
