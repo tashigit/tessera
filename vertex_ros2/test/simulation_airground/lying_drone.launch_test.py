@@ -66,12 +66,29 @@ BOT_START = {"bot_0": (-24.0, -12.0), "bot_1": (-24.0, -6.0)}
 DRONE_START = {"drone_0": "-20,-15", "drone_1": "16,9"}
 LINK_PORT = {"drone_0": 48635, "drone_1": 48636}
 
+# This test's own consensus port range. See the note in
+# airground.launch_test.py: sharing one range across the three airground tests
+# lets a socket held by the previous test stall the next one on SocketBind.
+PORT_BASE = 47641
+
+
+def _rebind(peers):
+    """Move the committee onto this test's own consensus port range."""
+    missing = [a for a in AGENTS if a not in peers]
+    if missing:
+        pytest.skip(f"{PEERS_PATH} is missing {missing} — regenerate it with "
+                    f"fixtures/gen_peers_airground.sh.")
+    for i, name in enumerate(AGENTS):
+        host = peers[name]["addr"].rsplit(":", 1)[0]
+        peers[name] = {**peers[name], "addr": f"{host}:{PORT_BASE + i}"}
+    return peers
+
 
 def _load_peers():
     if not os.path.exists(PEERS_PATH):
         pytest.skip(f"{PEERS_PATH} missing — run fixtures/gen_peers_airground.sh first.")
     with open(PEERS_PATH) as f:
-        return {p["name"]: p for p in json.load(f)}
+        return _rebind({p["name"]: p for p in json.load(f)})
 
 
 def _secret_key_file(secret, tmpdir, name):
