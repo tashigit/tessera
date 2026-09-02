@@ -77,12 +77,29 @@ BOT_START = {"bot_0": (-24.0, -12.0), "bot_1": (-24.0, -6.0)}
 DRONE_START = {"drone_0": "18,12", "drone_1": "-14,0"}
 LINK_PORT = {"drone_0": 48637, "drone_1": 48638}
 
+# This test's own consensus port range. See the note in
+# airground.launch_test.py. This is the test the shared range actually broke:
+# it runs last, so it inherited whatever the other two had not released yet.
+PORT_BASE = 47651
+
+
+def _rebind(peers):
+    """Move the committee onto this test's own consensus port range."""
+    missing = [a for a in AGENTS if a not in peers]
+    if missing:
+        pytest.skip(f"{PEERS_PATH} is missing {missing} — regenerate it with "
+                    f"fixtures/gen_peers_airground.sh.")
+    for i, name in enumerate(AGENTS):
+        host = peers[name]["addr"].rsplit(":", 1)[0]
+        peers[name] = {**peers[name], "addr": f"{host}:{PORT_BASE + i}"}
+    return peers
+
 
 def _load_peers():
     if not os.path.exists(PEERS_PATH):
         pytest.skip(f"{PEERS_PATH} missing — run fixtures/gen_peers_airground.sh first.")
     with open(PEERS_PATH) as f:
-        return {p["name"]: p for p in json.load(f)}
+        return _rebind({p["name"]: p for p in json.load(f)})
 
 
 def _secret_key_file(secret, tmpdir, name):
