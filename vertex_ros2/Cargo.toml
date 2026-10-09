@@ -21,10 +21,13 @@ vertex_core = { path = "../vertex_core" }
 # Bridges the engine thread's tokio mpsc receivers onto ROS publishers.
 tokio = { version = "1", features = ["sync", "rt"] }
 
-# Provided by the colcon/ROS 2 workspace (ros2-rust). Versions track the target
-# distribution (Jazzy baseline); colcon-ros-cargo resolves them.
-rclrs = "*"
-builtin_interfaces = "*"
-diagnostic_msgs = "*"
-std_msgs = "*"
-vertex_ros2_msgs = "*"
+# rclrs itself comes from the colcon/ROS 2 workspace: colcon-ros-cargo patches
+# it to the ros2-rust overlay's copy, so this requirement only has to match the
+# overlay's version (ros2_rust v0.8.0, pinned in docker/Dockerfile).
+rclrs = "0.8"
+
+# Generated message crates are no longer individual Cargo dependencies. Since
+# ros2_rust 0.8 the generator registers them for `ros-env`, which re-exports
+# every interface crate found on AMENT_PREFIX_PATH at build time, including
+# our own vertex_ros2_msgs. Use them as `ros_env::<package>::msg::...`.
+ros-env = "0.3"

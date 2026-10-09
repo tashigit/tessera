@@ -23,7 +23,6 @@ Desktop on macOS and works unchanged with these files.
 | File | Role |
 |---|---|
 | `docker/Dockerfile` | The environment: ROS Jazzy + Rust + a ros2-rust overlay (`rclrs` + Rust message bindings) + `colcon-cargo`/`colcon-ros-cargo` + CMake ≥ 4.2.3 |
-| `docker/extra_interfaces.repos` | Source-builds `common_interfaces` + `rcl_interfaces` so Rust bindings exist for `std_msgs`/`diagnostic_msgs`/`builtin_interfaces` |
 | `docker/entrypoint.sh` | Sources the env and dispatches `core` / `build` / `test` / `soak` / `shell` |
 | `docker-compose.yml` (repo root) | Bind-mounts the source and defines the run targets |
 
@@ -73,11 +72,17 @@ This setup is authored against the documented toolchains; it has **not** yet bee
 run end-to-end here. The step most likely to need a nudge is the **ros2-rust
 overlay**:
 
-- `ros2_rust_jazzy.repos` is fetched from `ros2-rust/ros2_rust`'s default branch.
-  If upstream renames/moves that file or its layout, adjust the `vcs import` line
-  in the `Dockerfile`.
-- If a message package still lacks Rust bindings at `colcon build`, add its repo
-  to `extra_interfaces.repos` so the generator runs over it.
+- The overlay is pinned: `ros2_rust` at the `ROS2_RUST_TAG` tag, and the
+  generator (`rosidl_rust`) and runtime (`rosidl_runtime_rs`) at the commits
+  named by the `ROSIDL_*_REV` build args. Its `ros2_rust_jazzy.repos` already
+  source-builds `common_interfaces` and `rcl_interfaces`, which is where the
+  `std_msgs` / `diagnostic_msgs` / `builtin_interfaces` Rust bindings come from.
+  Bump the tag and the two commits together.
+- Message crates are not separate Cargo dependencies any more. `vertex_ros2`
+  depends on `ros-env`, which re-exports every generated interface crate on
+  `AMENT_PREFIX_PATH` (including `vertex_ros2_msgs`) as `ros_env::<pkg>::msg::...`.
+  If a message package lacks Rust bindings at `colcon build`, add its repo to the
+  overlay so the generator runs over it.
 
 Run `docker compose run --rm core` first. It exercises the `tashi-vertex` CMake
 fetch and the Rust core without the ROS layer, isolating env problems quickly.
