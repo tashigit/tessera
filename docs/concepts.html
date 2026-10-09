@@ -377,13 +377,15 @@ ros2 service call /agent_0/vertex/transition vertex_ros2_msgs/srv/VertexTransiti
 <p>Sanity check the mesh with <code>ros2 service call /agent_0/vertex/status vertex_ros2_msgs/srv/VertexStatus</code>: it reports <code>running</code>, <code>peer_count</code>, and submit/reject counters.</p>
 
 <h2 id="s5"><span class="stepno">Step 5</span>Define the payload protocol</h2>
-<p>Vertex moves opaque bytes, so the record format is entirely yours. Small JSON records work well and stay debuggable. The example's protocol is four route-exploration verbs plus two housekeeping ones, and its shape transfers to almost any task-allocation problem:</p>
+<p>Vertex moves opaque bytes, so the record format is entirely yours. Small JSON records work well and stay debuggable. The example's protocol is a rollcall verb, four route-exploration verbs and three housekeeping ones, and its shape transfers to almost any task-allocation problem:</p>
 <div class="code"><span class="lang">jsonc — one record per transaction</span><button class="copy">Copy</button><pre>
+{ <span class="f">"op"</span>: <span class="s">"ready"</span>,   <span class="f">"bot"</span>: 2, <span class="f">"epoch"</span>: 0 }                <span class="c">// rollcall: nobody claims before the fleet is complete</span>
 { <span class="f">"op"</span>: <span class="s">"claim"</span>,   <span class="f">"bot"</span>: 2, <span class="f">"route"</span>: <span class="s">"R1"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// propose to take a task</span>
 { <span class="f">"op"</span>: <span class="s">"blocked"</span>, <span class="f">"bot"</span>: 2, <span class="f">"route"</span>: <span class="s">"R1"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// my sensors say: task impossible</span>
 { <span class="f">"op"</span>: <span class="s">"arrived"</span>, <span class="f">"bot"</span>: 1, <span class="f">"route"</span>: <span class="s">"R2"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// task proven done</span>
 { <span class="f">"op"</span>: <span class="s">"timeout"</span>, <span class="f">"bot"</span>: 3, <span class="f">"victim"</span>: 2, <span class="f">"route"</span>: <span class="s">"R3"</span>, <span class="f">"epoch"</span>: 0 }  <span class="c">// lease expiry</span>
 { <span class="f">"op"</span>: <span class="s">"unblock_all"</span>, <span class="f">"bot"</span>: 3, <span class="f">"seq"</span>: 2, <span class="f">"epoch"</span>: 0 }   <span class="c">// world changed, shared facts stale</span>
+{ <span class="f">"op"</span>: <span class="s">"rollcall_timeout"</span>, <span class="f">"bot"</span>: 3, <span class="f">"epoch"</span>: 0 }          <span class="c">// fleet still incomplete: start with who is here</span>
 { <span class="f">"op"</span>: <span class="s">"reset"</span>, <span class="f">"epoch"</span>: 1 }                            <span class="c">// wipe and restart the mission</span>
 </pre></div>
 <p>Four rules make a protocol like this correct under concurrency. They are the accumulated lessons of the example, so I recommend adopting all of them:</p>

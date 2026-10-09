@@ -121,6 +121,11 @@ class TestRouteExploration(unittest.TestCase):
         latest = {i: None for i in range(self.n)}
         exclusivity_violations = []               # snapshots with a route shared
         events = {i: [] for i in range(self.n)}   # per-bot /vertex/event stream
+        # diagnostics for a failure: seconds after start when each bot first
+        # showed up in the rollcall and in an assignment (as seen by robot_0)
+        t0 = time.time()
+        first_present = {}
+        first_assigned = {}
 
         def make_cb(i):
             def cb(msg):
@@ -129,6 +134,11 @@ class TestRouteExploration(unittest.TestCase):
                 assigned = st.get("assigned", {})
                 if len(set(assigned.values())) != len(assigned):
                     exclusivity_violations.append(assigned)
+                if i == 0:
+                    for b in st.get("present", []):
+                        first_present.setdefault(b, round(time.time() - t0, 2))
+                    for b, r in assigned.items():
+                        first_assigned.setdefault(int(b), (r, round(time.time() - t0, 2)))
             return cb
 
         def make_ev_cb(i):
@@ -160,7 +170,9 @@ class TestRouteExploration(unittest.TestCase):
                              f"robot_{i} state shows not everyone arrived: {st}")
             self.assertEqual(st.get("phase"), "done", f"robot_{i}: {st}")
             # the physically-blocked route was discovered and reported (rule 5)
-            self.assertIn("R1", st.get("blocked", []), f"robot_{i}: {st}")
+            self.assertIn("R1", st.get("blocked", []),
+                          f"robot_{i}: {st}; rollcall seen at {first_present}; "
+                          f"first assignments {first_assigned}")
             # a proven-open path was found and everyone agrees on it (rule 4)
             self.assertIsNotNone(st.get("winner_route"), f"robot_{i}: {st}")
             winners.add(st.get("winner_route"))

@@ -122,6 +122,15 @@ phase          := exploring | converging (winner set) | done (all arrived)
 
 Rules, applied identically on every bot:
 
+0. **Rollcall.** Every bot announces itself with `ready` when its engine is
+   Active, and no claim is accepted until every bot of the fleet is present.
+   Claims therefore start from one point in consensus order however far apart
+   the processes came up. Without it, a bot whose home lane is blocked can
+   join after the others have already claimed and arrived; the first arrival
+   fixes the winner and the blocked route is never probed. If the fleet is
+   still incomplete after `rollcall_timeout_sec`, any bot proposes
+   `rollcall_timeout` and the mission starts with whoever answered, so a bot
+   dead at epoch start cannot hold the others forever.
 1. **Claim.** Every unassigned, unarrived bot claims a free route (its home
    lane first) every `claim_interval`. Claims are arbitrated by consensus
    order: the first claim for a route wins it, losers just claim again. No two
@@ -170,7 +179,7 @@ Each robot `i` runs, in namespace `/robot_i`:
  │        ▲ drive: route id | STAGING | STOP                           │
  │        │                                                            │
  │  mission_coordinator   (the replicated state machine, §3.1)         │
- │     │  claim / blocked / arrived / unblock_all / reset              │
+ │     │  ready / claim / blocked / arrived / unblock_all / reset      │
  │     │        ──────────────────────────────▶  /robot_i/vertex/tx    │
  │     ◀── ordered log ──────────────────────    /robot_i/vertex/event │
  │                                                                     │
@@ -202,6 +211,8 @@ coordinator encodes small JSON records. All records carry `epoch` so stale
 messages from before a reset are ignored:
 
 ```jsonc
+{ "op": "ready",   "bot": 2,               "epoch": 0 }  // rollcall
+{ "op": "rollcall_timeout", "bot": 3,      "epoch": 0 }  // fleet incomplete: start anyway
 { "op": "claim",   "bot": 2, "route": "R1", "epoch": 0 }
 { "op": "claim",   "bot": 2, "route": "R1", "epoch": 0, "retry": true }  // all-blocked recovery
 { "op": "blocked", "bot": 2, "route": "R1", "epoch": 0 }

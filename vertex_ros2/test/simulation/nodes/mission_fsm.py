@@ -7,6 +7,14 @@ records (the Vertex consensus order on /vertex/event), every robot derives
 identical global state — that determinism is the property under test.
 
 Rules (see worlds/README.md):
+  * Rollcall first: every bot announces itself with `ready`, and no claim is
+    accepted until every bot of the fleet is present. Claims therefore start
+    from one point in consensus order no matter how far apart the processes
+    came up; otherwise a bot whose home lane is blocked can join after the
+    others have claimed and arrived, the first arrival fixes the winner, and
+    the blocked route is never probed. A `rollcall_timeout` (proposed by any
+    bot after a bounded wait) opens claims with whoever answered, so a bot
+    that is dead at the start of an epoch cannot hold the fleet forever.
   * Every bot claims a route via consensus; claims are processed in consensus
     order and NO TWO BOTS are ever assigned the same route (exclusive
     assignment). All assigned bots explore concurrently.
@@ -30,6 +38,8 @@ Rules (see worlds/README.md):
     every bot proposing concurrently is safe.
 
 Transaction payloads are opaque JSON records (all carry `epoch` for reset):
+    {"op":"ready",   "bot":2,              "epoch":0}   # rollcall
+    {"op":"rollcall_timeout", "bot":3,     "epoch":0}   # start with who is here
     {"op":"claim",   "bot":2, "route":"R1", "epoch":0}
     {"op":"claim",   "bot":2, "route":"R1", "epoch":0, "retry":true}
     {"op":"blocked", "bot":2, "route":"R1", "epoch":0}
@@ -74,6 +84,8 @@ class MissionState(ReplicatedState):
         super().__init__()        # sets epoch = 0 and calls wipe()
 
     def wipe(self) -> None:
+        self.present: set[int] = set()     # bots that answered rollcall this epoch
+        self.rollcall_closed = False       # a rollcall_timeout opened claims early
         self.arrived: set[int] = set()     # bots that reached the end (stay there)
         self.blocked: set[str] = set()     # routes reported blocked
         self.winner_route = None           # first proven-open route
@@ -84,10 +96,20 @@ class MissionState(ReplicatedState):
     def apply_record(self, rec: dict) -> None:
         op = rec["op"]
         bot, route = rec.get("bot"), rec.get("route")
-        if op == "claim":
+        if op == "ready":
+            # Rollcall. Duplicates are no-ops; ids outside the fleet are ignored
+            # so a stray record can never satisfy the headcount.
+            if isinstance(bot, int) and 0 <= bot < self.num_bots:
+                self.present.add(bot)
+        elif op == "rollcall_timeout":
+            # Bounded wait expired on some bot: start with whoever is present.
+            self.rollcall_closed = True
+        elif op == "claim":
             # Exclusive assignment, first claim in consensus order wins the route.
             # `retry` claims may target a blocked route (all-blocked recovery).
-            ok = (self.phase == EXPLORING and bot not in self.arrived
+            # Nothing is assigned until rollcall is complete.
+            ok = (self.claims_open() and self.phase == EXPLORING
+                  and bot not in self.arrived
                   and bot not in self.assigned and route in self.routes
                   and route not in self.assigned.values()
                   and (route not in self.blocked or rec.get("retry")))
@@ -141,6 +163,10 @@ class MissionState(ReplicatedState):
             self.phase = EXPLORING
 
     # ---- derived state (identical on every robot) ----
+    def claims_open(self) -> bool:
+        """Rollcall complete (every bot present) or forced open by a timeout."""
+        return self.rollcall_closed or len(self.present) >= self.num_bots
+
     def claimable_routes(self):
         """Routes a bot may claim right now (unblocked and unassigned)."""
         taken = set(self.assigned.values())
