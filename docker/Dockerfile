@@ -17,8 +17,8 @@
 # time (see docker-compose.yml) so you can iterate without rebuilding the image.
 #
 # Build:   docker build -t tessera-ros2:jazzy -f docker/Dockerfile docker
-# (the build context is ./docker; it only needs extra_interfaces.repos + the
-#  entrypoint, the project itself is mounted at run time.)
+# (the build context is ./docker; it only needs the entrypoint, the project
+#  itself is mounted at run time.)
 
 FROM ros:jazzy-ros-base
 
@@ -52,29 +52,43 @@ ENV RUSTUP_HOME=/opt/rust/rustup \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --default-toolchain stable --profile minimal \
     && rustc --version \
-    && cargo install cargo-ament-build
+    && cargo install cargo-ament-build --version 0.1.11
 
 # --- colcon plugins for the Rust build path ---------------------------------
+# Neither plugin is released to PyPI, so install from git at fixed commits.
 RUN pip3 install \
-        git+https://github.com/colcon/colcon-cargo.git \
-        git+https://github.com/colcon/colcon-ros-cargo.git
+        git+https://github.com/colcon/colcon-cargo.git@518a4f90d7de33d685cfba32a45fb4cb3aa08950 \
+        git+https://github.com/colcon/colcon-ros-cargo.git@dc26ba5f4e7d016a5f8b78abdaa1c22de9d35442
 
 # --- ros2-rust overlay (rclrs + Rust message bindings) -----------------------
-# rclrs is not in apt; build it once into /opt/ros2_rust as an overlay. We also
-# source-build common_interfaces + rcl_interfaces so the Rust generator emits
-# bindings for std_msgs / diagnostic_msgs / builtin_interfaces (the message
-# packages vertex_ros2 depends on) — prebuilt apt packages carry no Rust crate.
+# rclrs is not in apt; build it once into /opt/ros2_rust as an overlay. The
+# upstream repos file also source-builds common_interfaces + rcl_interfaces, so
+# the Rust generator emits bindings for std_msgs / diagnostic_msgs /
+# builtin_interfaces (prebuilt apt packages carry no Rust crate). Since
+# ros2_rust 0.8 those generated crates reach vertex_ros2 through the `ros-env`
+# crate, not as individual Cargo dependencies.
+#
+# Everything here is pinned. The repos file names only branches for the
+# ros2-rust side repos, so the generator and runtime are fixed to commits that
+# match the tag. Bump the tag and the two commits together.
+ARG ROS2_RUST_TAG=v0.8.0
+ARG ROSIDL_RUST_REV=19d57818dab3b51e418c0893b70b3a1a8b64c495
+ARG ROSIDL_RUNTIME_RS_REV=21def427689fda0156dd4b0dff28d8d0318af03b
 WORKDIR /opt/ros2_rust
-COPY extra_interfaces.repos /opt/ros2_rust/extra_interfaces.repos
-RUN git clone https://github.com/ros2-rust/ros2_rust.git src/ros2_rust \
+RUN git clone --branch "${ROS2_RUST_TAG}" --depth 1 \
+        https://github.com/ros2-rust/ros2_rust.git src/ros2_rust \
     && vcs import src < src/ros2_rust/ros2_rust_jazzy.repos \
-    && vcs import src < extra_interfaces.repos
+    && git -C src/ros2-rust/rosidl_rust checkout --detach "${ROSIDL_RUST_REV}" \
+    && git -C src/ros2-rust/rosidl_runtime_rs checkout --detach "${ROSIDL_RUNTIME_RS_REV}"
 RUN . /opt/ros/jazzy/setup.sh \
     && rosdep update \
     && rosdep install --from-paths src --ignore-src -y --rosdistro jazzy \
         || echo "rosdep: some keys unresolved (rust deps are expected); continuing"
+# The upstream example packages are imported by the repos file but nothing
+# here uses them, so leave them out of the overlay build.
 RUN . /opt/ros/jazzy/setup.sh \
-    && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+    && colcon build --packages-skip-regex '^examples_rclrs_' \
+        --cmake-args -DCMAKE_BUILD_TYPE=Release
 
 # --- workspace mount point ---------------------------------------------------
 # docker-compose mounts this repo here at run time:
