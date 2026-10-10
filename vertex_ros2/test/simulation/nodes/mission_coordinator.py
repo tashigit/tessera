@@ -17,7 +17,8 @@ and epoch-stamped proposals. This node adds what is mission-specific:
     mission_state      std_msgs/String (JSON)         for the launch_test
 
 Physical triggers (arrival on the claimed route's row / barrier stall), the
-claim loop (home lane first, retry when everything is blocked), the lease
+rollcall (announce myself each epoch; nobody claims before the fleet is
+complete), the claim loop (home lane first, retry when everything is blocked), the lease
 timeout for dead explorers, and the per-node consensus log that
 verify_consensus_logs.py diffs across bots. Physical collision safety is the
 follower's job; consensus only guarantees route exclusivity.
@@ -66,6 +67,12 @@ class MissionCoordinator(VertexAgent):
         # that releases its route (first timeout in consensus order wins,
         # duplicates are no-ops). Must exceed the worst-case probe time.
         self.declare_parameter("lease_sec", 45.0)
+        # rollcall: claims wait until every bot has announced itself in this
+        # epoch. After this long with the fleet still incomplete, propose a
+        # consensus `rollcall_timeout` so the mission starts with whoever is
+        # here (a bot dead at epoch start must not hold the others forever).
+        # Must exceed the worst-case process start-up skew.
+        self.declare_parameter("rollcall_timeout_sec", 15.0)
 
         self.my_id = int(self.get_parameter("robot_id").value)
         self.routes = list(self.get_parameter("routes").value)
@@ -77,6 +84,7 @@ class MissionCoordinator(VertexAgent):
         self.retry_after = float(self.get_parameter("retry_after_sec").value)
         self.random_routes = bool(self.get_parameter("random_routes").value)
         self.lease_sec = float(self.get_parameter("lease_sec").value)
+        self.rollcall_timeout = float(self.get_parameter("rollcall_timeout_sec").value)
         # home lane: bot i <-> routes[i] (straight-out departure, no lane change)
         self.home_route = self.routes[self.my_id] if self.my_id < len(self.routes) else None
 
@@ -98,6 +106,10 @@ class MissionCoordinator(VertexAgent):
         self._last_decision = None       # last logged (role, target) pair
         self._assign_seen = {}           # (bot, route) -> Time it entered the log
         self._timeout_sent = set()       # (epoch, bot, route) timeouts I proposed
+        self._rollcall_epoch = None      # epoch my rollcall bookkeeping is for
+        self._rollcall_since = now       # when rollcall started in that epoch
+        self._last_ready = None          # last `ready` I proposed
+        self._rollcall_timeout_sent = set()   # epochs I proposed a timeout for
 
         # Per-node consensus log: one file per bot, visible on the host via the
         # bind mount. Records every delivered consensus event (with its hash),
@@ -136,7 +148,8 @@ class MissionCoordinator(VertexAgent):
         recs = [decode(tx.payload) for tx in msg.transactions]
         self._flog(f"EVENT #{self.events_folded} hash={h} "
                    f"records={[r for r in recs if r]}")
-        self._flog(f"STATE  blocked={sorted(self.state.blocked)} "
+        self._flog(f"STATE  present={sorted(self.state.present)} "
+                   f"blocked={sorted(self.state.blocked)} "
                    f"assigned={dict(sorted(self.state.assigned.items()))} "
                    f"arrived={sorted(self.state.arrived)} "
                    f"winner={self.state.winner_route} phase={self.state.phase}")
@@ -206,6 +219,30 @@ class MissionCoordinator(VertexAgent):
             self._target_key = key_now
             self._target_since = now
 
+        # 0. Rollcall: announce myself (once per epoch, repeated until the fold
+        #    shows me present) and, if the fleet stays incomplete past the
+        #    bounded wait, propose the timeout that starts without the missing
+        #    bot. Claims below are gated on the shared rollcall state, so every
+        #    bot's first claim lands after the whole fleet is present in
+        #    consensus order, whatever the process start-up skew.
+        if self.state.epoch != self._rollcall_epoch:
+            self._rollcall_epoch = self.state.epoch
+            self._rollcall_since = now
+            self._last_ready = None
+        if not self.state.claims_open():
+            since_ready = (None if self._last_ready is None
+                           else (now - self._last_ready).nanoseconds / 1e9)
+            if self.my_id not in self.state.present and (
+                    since_ready is None or since_ready >= self.claim_interval):
+                self._emit({"op": "ready", "bot": self.my_id})
+                self._last_ready = now
+            waited = (now - self._rollcall_since).nanoseconds / 1e9
+            if waited >= self.rollcall_timeout \
+                    and self.state.epoch not in self._rollcall_timeout_sent:
+                self._rollcall_timeout_sent.add(self.state.epoch)
+                self._emit({"op": "rollcall_timeout", "bot": self.my_id,
+                            "present": sorted(self.state.present)})
+
         # 1. Physical outcome for my current target (explore or converge), once.
         #    An arrival counts only ON the target route's row: a bot can end up
         #    past goal_x on a DIFFERENT lane (e.g. shoved down a freshly opened
@@ -254,7 +291,8 @@ class MissionCoordinator(VertexAgent):
         #    (home lane first). All bots do this concurrently; consensus order
         #    arbitrates — losers just claim again. When nothing is claimable for
         #    retry_after seconds, re-claim a blocked route (recovery).
-        if self.state.phase == EXPLORING and self.my_id not in self.state.arrived \
+        if self.state.phase == EXPLORING and self.state.claims_open() \
+                and self.my_id not in self.state.arrived \
                 and self.my_id not in self.state.assigned:
             if (now - self._last_claim).nanoseconds / 1e9 >= self.claim_interval:
                 route, retry = self._pick_route(now)
@@ -333,6 +371,7 @@ class MissionCoordinator(VertexAgent):
         self.state_pub.publish(String(data=json.dumps({
             "robot_id": self.my_id,
             "epoch": self.state.epoch,
+            "present": sorted(self.state.present),
             "assigned": {str(b): r for b, r in sorted(self.state.assigned.items())},
             "arrived": sorted(self.state.arrived),
             "blocked": sorted(self.state.blocked),

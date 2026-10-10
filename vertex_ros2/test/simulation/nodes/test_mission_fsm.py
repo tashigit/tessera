@@ -13,9 +13,20 @@ from mission_fsm import CONVERGING, DONE, EXPLORING, MissionState, decode, encod
 
 ROUTES = ["R1", "R2", "R3", "R4"]
 
+# every bot answers rollcall; the mission tests start from a complete fleet
+ROLLCALL = [{"op": "ready", "bot": i, "epoch": 0} for i in range(4)]
 
-def fresh_fleet(n=4):
-    return [MissionState(ROUTES, num_bots=4) for _ in range(n)]
+
+def fresh_state(rollcall=True):
+    fsm = MissionState(ROUTES, num_bots=4)
+    if rollcall:
+        for rec in ROLLCALL:
+            fsm.apply(rec)
+    return fsm
+
+
+def fresh_fleet(n=4, rollcall=True):
+    return [fresh_state(rollcall) for _ in range(n)]
 
 
 def feed(fleet, log):
@@ -48,6 +59,58 @@ def test_codec_roundtrip():
     assert decode(encode(rec)) == rec
     assert decode(b"nope") is None
     print("ok  codec_roundtrip")
+
+
+def test_rollcall_gates_claims():
+    # nobody is assigned anything until every bot has announced itself, so
+    # the first claim in consensus order always postdates the whole fleet
+    # being present — a late starter cannot miss the exploration phase.
+    fleet = fresh_fleet(rollcall=False)
+    feed(fleet, [R("claim", 1, "R2"), R("ready", 1), R("ready", 2),
+                 R("ready", 3), R("claim", 1, "R2"), R("ready", 1)])  # dup ready
+    assert_agreement(fleet, "rollcall-open")
+    f = fleet[0]
+    assert not f.claims_open() and f.assigned == {}       # bot 0 still missing
+    assert f.present == {1, 2, 3} and f.role(1) == ("wait", None)
+    assert f.claimable_routes() == ROUTES                 # nothing taken yet
+    feed(fleet, [R("ready", 0), R("claim", 1, "R2"), R("claim", 0, "R1")])
+    assert_agreement(fleet, "rollcall-complete")
+    assert fleet[0].claims_open() and fleet[0].assigned == {0: "R1", 1: "R2"}
+    # ids outside the fleet never count towards the headcount
+    g = fresh_state(rollcall=False)
+    for b in (0, 1, 2, 7, "3", None):
+        g.apply(R("ready", b))
+    assert g.present == {0, 1, 2} and not g.claims_open()
+    print("ok  rollcall_gates_claims")
+
+
+def test_rollcall_timeout_starts_with_who_is_present():
+    # a bot dead at epoch start must not hold the fleet: any bot's timeout
+    # opens claims for the bots that did answer; later timeouts are no-ops
+    fleet = fresh_fleet(rollcall=False)
+    feed(fleet, [R("ready", 1), R("ready", 2), R("ready", 3),
+                 R("rollcall_timeout", 2), R("claim", 1, "R2"),
+                 R("rollcall_timeout", 3)])
+    assert_agreement(fleet, "rollcall-timeout")
+    f = fleet[0]
+    assert f.claims_open() and f.assigned == {1: "R2"} and f.present == {1, 2, 3}
+    print("ok  rollcall_timeout_starts_with_who_is_present")
+
+
+def test_reset_reopens_rollcall():
+    # a new epoch is a new mission: everyone must answer rollcall again
+    fsm = fresh_state()
+    fsm.apply(R("claim", 0, "R1"))
+    assert fsm.assigned == {0: "R1"}
+    fsm.apply({"op": "reset", "epoch": 1})
+    assert fsm.present == set() and not fsm.claims_open()
+    fsm.apply(R("claim", 0, "R1", epoch=1))
+    assert fsm.assigned == {}                            # gated again
+    for i in range(4):
+        fsm.apply(R("ready", i, epoch=1))
+    fsm.apply(R("claim", 0, "R1", epoch=1))
+    assert fsm.assigned == {0: "R1"}
+    print("ok  reset_reopens_rollcall")
 
 
 def test_exclusive_parallel_assignment():
@@ -84,7 +147,7 @@ def test_blocked_frees_immediately_no_waiting():
 
 
 def test_claim_on_blocked_route_needs_retry_flag():
-    fsm = MissionState(ROUTES)
+    fsm = fresh_state()
     fsm.apply(R("blocked", 2, "R1"))
     fsm.apply(R("claim", 0, "R1"))
     assert 0 not in fsm.assigned                    # plain claim refused
@@ -117,7 +180,7 @@ def test_first_arrival_converges_everyone():
 
 
 def test_winner_blocked_reopens_exploration():
-    fsm = MissionState(ROUTES)
+    fsm = fresh_state()
     fsm.apply(R("claim", 0, "R2")); fsm.apply(R("arrived", 0, "R2"))
     assert fsm.phase == CONVERGING and fsm.winner_route == "R2"
     fsm.apply(R("blocked", 1, "R2"))
@@ -181,7 +244,7 @@ def test_converge_rank_is_deterministic():
 
 
 def test_reset_wipes_state_via_epoch():
-    fsm = MissionState(ROUTES)
+    fsm = fresh_state()
     fsm.apply(R("claim", 0, "R1")); fsm.apply(R("arrived", 0, "R1"))
     assert fsm.arrived == {0}
     fsm.apply({"op": "reset", "epoch": 1})
@@ -189,6 +252,8 @@ def test_reset_wipes_state_via_epoch():
             and fsm.winner_route is None and fsm.phase == EXPLORING)
     fsm.apply(R("arrived", 0, "R1", epoch=0))        # stale epoch -> ignored
     assert fsm.arrived == set()
+    for i in range(4):
+        fsm.apply(R("ready", i, epoch=1))            # rollcall in the new epoch
     fsm.apply(R("claim", 0, "R1", epoch=1)); fsm.apply(R("arrived", 0, "R1", epoch=1))
     assert fsm.arrived == {0}
     print("ok  reset_wipes_state_via_epoch")
@@ -211,7 +276,7 @@ def test_timeout_releases_dead_explorers_route():
 
 
 def test_timeout_stale_and_duplicate_are_noops():
-    fsm = MissionState(ROUTES)
+    fsm = fresh_state()
     fsm.apply(R("timeout", 0, "R3", victim=2))            # victim not assigned
     assert fsm.assigned == {}
     fsm.apply(R("claim", 2, "R3"))
@@ -227,7 +292,7 @@ def test_timeout_stale_and_duplicate_are_noops():
 
 
 def test_timeout_does_not_touch_arrived_bots():
-    fsm = MissionState(ROUTES)
+    fsm = fresh_state()
     fsm.apply(R("claim", 2, "R3")); fsm.apply(R("arrived", 2, "R3"))
     fsm.apply(R("timeout", 0, "R3", victim=2))            # already released
     assert 2 in fsm.arrived and fsm.winner_route == "R3"
