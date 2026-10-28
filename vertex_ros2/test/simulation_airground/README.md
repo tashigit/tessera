@@ -332,7 +332,7 @@ Watch the shared state live from any agent:
 
 ```bash
 docker exec -it $(docker ps -q -f name=tessera-sim-run | head -1) bash -lc \
-  'source /opt/ros/jazzy/setup.bash && source /ws/install/setup.bash \
+  'source /opt/ros/$ROS_DISTRO/setup.bash && source /ws/install/setup.bash \
    && ros2 topic echo /bot_0/mission_state'
 ```
 

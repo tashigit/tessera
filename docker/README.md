@@ -1,16 +1,19 @@
-# Dockerized ROS 2 Jazzy environment (incl. Apple Silicon)
+# Dockerized ROS 2 environment (Jazzy and Humble, incl. Apple Silicon)
 
 Runs the `vertex_ros2` node and its `launch_test`s on a machine without a native
-ROS 2 install. Built and tested target: **ROS 2 Jazzy on Ubuntu 24.04**, the same
-distro the design acceptance criteria (§7) target.
+ROS 2 install. Built and tested targets: **ROS 2 Jazzy on Ubuntu 24.04** (the
+default, and the distro the design acceptance criteria (§7) target) and
+**ROS 2 Humble on Ubuntu 22.04** (selected with a compose override, see below).
 
 ## Why containerized (and not native macOS)
 
-ROS 2 dropped macOS from its supported tiers; Jazzy targets Ubuntu 24.04. On an
-Apple Silicon (M-series) Mac the right move is a Linux container:
+ROS 2 dropped macOS from its supported tiers; Jazzy targets Ubuntu 24.04 and
+Humble Ubuntu 22.04. On an Apple Silicon (M-series) Mac the right move is a
+Linux container:
 
-- The `ros:jazzy-ros-base` image is **multi-arch**: on an M3 Docker pulls the
-  `linux/arm64` variant and runs it **natively** (no x86 emulation, full speed).
+- The `ros:<distro>-ros-base` images are **multi-arch**: on an M3 Docker pulls
+  the `linux/arm64` variant and runs it **natively** (no x86 emulation, full
+  speed).
 - The `tashi-vertex` crate's CMake downloads the prebuilt `tashi-vertex-c`
   release and, on Linux/arm64, links **`libtashi-vertex-arm64.so`** (shipped
   since v0.14.0).
@@ -22,9 +25,10 @@ Desktop on macOS and works unchanged with these files.
 
 | File | Role |
 |---|---|
-| `docker/Dockerfile` | The environment: ROS Jazzy + Rust + a ros2-rust overlay (`rclrs` + Rust message bindings) + `colcon-cargo`/`colcon-ros-cargo` + CMake ≥ 4.2.3 |
-| `docker/entrypoint.sh` | Sources the env and dispatches `core` / `build` / `test` / `soak` / `shell` |
-| `docker-compose.yml` (repo root) | Bind-mounts the source and defines the run targets |
+| `docker/Dockerfile` | The environment: ROS 2 (`ROS_DISTRO` build arg, `jazzy` by default) + Rust + a ros2-rust overlay (`rclrs` + Rust message bindings) + `colcon-cargo`/`colcon-ros-cargo` + CMake ≥ 4.2.3 |
+| `docker/entrypoint.sh` | Sources the env (whichever distro the image carries) and dispatches `core` / `build` / `test` / `soak` / `shell` |
+| `docker-compose.yml` (repo root) | Bind-mounts the source and defines the run targets (Jazzy) |
+| `docker-compose.humble.yml` (repo root) | Override that switches the same targets to Humble: its own image tag, build arg and project name, so the caches never mix |
 
 The image holds only the environment; this repo is **bind-mounted** at run
 time, so edits on the host take effect immediately with no image rebuild.
@@ -54,6 +58,27 @@ docker compose run --rm shell   # interactive, environment pre-sourced
 `build`/`test`/`install` artifacts persist in named volumes between runs, so only
 the first build pays full cost.
 
+### ROS 2 Humble
+
+Layer the override over the base file. Everything else is the same command:
+
+```console
+docker compose -f docker-compose.yml -f docker-compose.humble.yml build
+docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm test
+docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm sim simtest
+```
+
+To avoid retyping the pair, `export COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml`
+once per shell and use the plain commands above. The override changes the
+project name to `tessera-humble`, so the Humble build lives in
+`tessera-humble_*` volumes and the image is `tessera-ros2:humble`; the Jazzy
+project (`tessera_*`, `tessera-ros2:jazzy`) is untouched. The two `sim`
+targets publish the same host ports, so only one can run live at a time.
+
+If the 5-node arena suite turns out flaky on Humble's older Fast DDS, the
+first thing to try is more shared memory for its SHM transport: add
+`shm_size: 1gb` to the services in the override.
+
 ### Optional: link the local tashi-vertex-c
 
 To skip CMake's release download and link the `.so` from your local checkout,
@@ -62,9 +87,10 @@ uncomment the `tashi-vertex-c` mount and `TASHI_VERTEX_LOCAL_DIR` env in
 
 ## CI
 
-The same image backs CI: a GitHub Actions job on an arm64 (or amd64) runner runs
-`docker compose run --rm test` and, on a schedule, `soak`. This is the path that
-turns the "system tests pass **in CI** on Jazzy" criterion green.
+The same image backs CI: GitHub Actions jobs, one per distribution, run
+`docker compose run --rm test` and the simulation suite on every push, and
+`soak` on a schedule. This is the path that turns the "system tests pass **in
+CI** on Jazzy" criterion green, and keeps Humble green beside it.
 
 ## Caveats (could not be executed from the authoring environment)
 
@@ -74,10 +100,11 @@ overlay**:
 
 - The overlay is pinned: `ros2_rust` at the `ROS2_RUST_TAG` tag, and the
   generator (`rosidl_rust`) and runtime (`rosidl_runtime_rs`) at the commits
-  named by the `ROSIDL_*_REV` build args. Its `ros2_rust_jazzy.repos` already
-  source-builds `common_interfaces` and `rcl_interfaces`, which is where the
-  `std_msgs` / `diagnostic_msgs` / `builtin_interfaces` Rust bindings come from.
-  Bump the tag and the two commits together.
+  named by the `ROSIDL_*_REV` build args. Its per-distro repos file
+  (`ros2_rust_<distro>.repos`) already source-builds `common_interfaces` and
+  `rcl_interfaces`, which is where the `std_msgs` / `diagnostic_msgs` /
+  `builtin_interfaces` Rust bindings come from. Bump the tag and the two
+  commits together; both distros share them.
 - Message crates are not separate Cargo dependencies any more. `vertex_ros2`
   depends on `ros-env`, which re-exports every generated interface crate on
   `AMENT_PREFIX_PATH` (including `vertex_ros2_msgs`) as `ros_env::<pkg>::msg::...`.

@@ -1,7 +1,8 @@
-name: vertex_ros2 CI (Jazzy)
+name: vertex_ros2 CI
 
-# Runs the same Dockerized ROS 2 Jazzy harness that is used locally
-# (docker-compose.yml) so the design acceptance criteria are verified in CI:
+# Runs the same Dockerized ROS 2 harness that is used locally
+# (docker-compose.yml, plus docker-compose.humble.yml for Humble) so the design
+# acceptance criteria are verified in CI on both supported distributions:
 #   * `test`     — vertex_core cargo test + colcon build + the 3-node launch_test
 #                  (ordering byte-for-byte, no-publish-in-Inactive, lifecycle
 #                  cycle, clean shutdown).
@@ -15,6 +16,12 @@ name: vertex_ros2 CI (Jazzy)
 #                  vertex_ros2/test/simulation_airground/).
 #   * `soak`     — the 10-minute RSS-growth launch_test, on a nightly schedule,
 #                  plus the randomized mission soak (sim-soak).
+#
+# Every Docker job is a matrix over `distro: [jazzy, humble]`. The legs run on
+# separate runners with separate GHA build-cache scopes, so neither evicts the
+# other's image layers. The compose invocations are the same as the local ones;
+# only COMPOSE_FILE differs per leg (the Humble override is layered on for the
+# humble leg, nothing is added for jazzy).
 #
 # This repo is the only checkout needed: `vertex_core` pins `tashi-vertex` to
 # `=0.14.0` from crates.io, and that crate's build script downloads the
@@ -38,14 +45,18 @@ on:
         type: boolean
         default: false
 
-env:
-  IMAGE: tessera-ros2:jazzy
-
 jobs:
   system-test:
     # The 3-node launch_test + cargo test + colcon build.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy, humble]
+    env:
+      IMAGE: tessera-ros2:${{ matrix.distro }}
+      COMPOSE_FILE: ${{ matrix.distro == 'jazzy' && 'docker-compose.yml' || 'docker-compose.yml:docker-compose.humble.yml' }}
     steps:
       - name: Checkout tessera
         uses: actions/checkout@v4
@@ -66,15 +77,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build the Jazzy environment image (cached)
+      - name: Build the ${{ matrix.distro }} environment image (cached)
         uses: docker/build-push-action@v6
         with:
           context: tessera/docker
           file: tessera/docker/Dockerfile
+          build-args: |
+            ROS_DISTRO=${{ matrix.distro }}
           tags: ${{ env.IMAGE }}
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.distro }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.distro }}
 
       - name: Run system tests (cargo test + colcon build + 3-node launch_test)
         working-directory: tessera
@@ -91,6 +104,13 @@ jobs:
     # fold is checked here on the runner, outside the image.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy, humble]
+    env:
+      IMAGE: tessera-ros2:${{ matrix.distro }}
+      COMPOSE_FILE: ${{ matrix.distro == 'jazzy' && 'docker-compose.yml' || 'docker-compose.yml:docker-compose.humble.yml' }}
     steps:
       - name: Checkout tessera
         uses: actions/checkout@v4
@@ -100,11 +120,13 @@ jobs:
       # The air/ground fold exists in three languages: Python for the bots,
       # Rust for the drones, JavaScript so the viewer can decode /vertex/event
       # itself. All three replay fixtures/conformance.json. The first two run
-      # inside the Jazzy image via the entrypoint; this one runs here instead,
+      # inside the image via the entrypoint; this one runs here instead,
       # because the image has no Node and adding one for a single test costs
       # more than it saves. Runs before the image build so a fold divergence
-      # fails in seconds rather than after a full colcon build.
+      # fails in seconds rather than after a full colcon build. It has no ROS
+      # dependence, so one leg of the matrix is enough.
       - name: Conformance — the viewer's JavaScript fold
+        if: matrix.distro == 'jazzy'
         working-directory: tessera/vertex_ros2/test/simulation_airground/viewer
         run: node airground_fold.test.js
 
@@ -120,15 +142,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build the Jazzy environment image (cached)
+      - name: Build the ${{ matrix.distro }} environment image (cached)
         uses: docker/build-push-action@v6
         with:
           context: tessera/docker
           file: tessera/docker/Dockerfile
+          build-args: |
+            ROS_DISTRO=${{ matrix.distro }}
           tags: ${{ env.IMAGE }}
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.distro }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.distro }}
 
       - name: Run simulation suite (all three scenarios, headless)
         working-directory: tessera
@@ -165,6 +189,13 @@ jobs:
     # 10-minute RSS soak — nightly, or on demand via workflow_dispatch.
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_soak)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jazzy, humble]
+    env:
+      IMAGE: tessera-ros2:${{ matrix.distro }}
+      COMPOSE_FILE: ${{ matrix.distro == 'jazzy' && 'docker-compose.yml' || 'docker-compose.yml:docker-compose.humble.yml' }}
     steps:
       - name: Checkout tessera
         uses: actions/checkout@v4
@@ -185,15 +216,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build the Jazzy environment image (cached)
+      - name: Build the ${{ matrix.distro }} environment image (cached)
         uses: docker/build-push-action@v6
         with:
           context: tessera/docker
           file: tessera/docker/Dockerfile
+          build-args: |
+            ROS_DISTRO=${{ matrix.distro }}
           tags: ${{ env.IMAGE }}
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.distro }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.distro }}
 
       - name: Run soak (10 min)
         working-directory: tessera

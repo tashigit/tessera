@@ -1,0 +1,47 @@
+# tessera / vertex_ros2 — ROS 2 Humble override for docker-compose.yml.
+#
+# Layer this file over the base compose file to build and run the same harness
+# on ROS 2 Humble (Ubuntu 22.04) instead of Jazzy:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.humble.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm test
+#
+# or, once per shell, `export COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml`
+# and use the plain `docker compose run --rm <verb>` commands from the base file.
+#
+# What it changes, and nothing else:
+#   * the project name, so the build/install/target cache volumes live under
+#     `tessera-humble_*` and never mix with the Jazzy project's `tessera_*`;
+#   * the image tag, `tessera-ros2:humble`;
+#   * the build arg that selects the base image and apt packages.
+#
+# YAML anchors do not cross files, so the base file's `x-common` does not reach
+# this one; every service is listed here so none of them falls back to the
+# Jazzy image inside the Humble project. Compose deep-merges `build`, so the
+# context and dockerfile from the base file are kept.
+#
+# The host ports the `sim` service publishes (9090, 48633, 48634) are the same
+# as in the base file, so a Jazzy and a Humble `sim --service-ports` cannot run
+# at the same time.
+
+name: tessera-humble
+
+x-humble: &humble
+  image: tessera-ros2:humble
+  build:
+    args:
+      ROS_DISTRO: humble
+
+services:
+  test:
+    <<: *humble
+  core:
+    <<: *humble
+  build:
+    <<: *humble
+  soak:
+    <<: *humble
+  shell:
+    <<: *humble
+  sim:
+    <<: *humble

@@ -6,16 +6,22 @@ how consumers upgrade. The consumer-facing view is `CONSUMING.md`.
 ## What a release is
 
 A release is an annotated git tag `vX.Y.Z` on `main`. Pushing the tag runs the
-`release` workflow, which validates the full test suite in the Jazzy harness,
-exports the built install space as a self-contained tarball, and publishes a
-GitHub Release carrying:
+`release` workflow, which validates the full test suite in the harness for each
+supported ROS 2 distribution (Jazzy and Humble), exports each built install
+space as a self-contained tarball, and publishes one GitHub Release carrying:
 
-- `vertex-ros2-jazzy-<tag>-amd64.tar.gz`: the colcon install space
-  (`vertex_ros2_msgs`, `vertex_ros2`, `vertex_fleet`) with `libtashi-vertex.so`
-  copied next to the binaries so the `$ORIGIN`-relative rpath resolves. Extract
-  into a workspace and `source install/setup.bash`; no build required
+- `vertex-ros2-jazzy-<tag>-amd64.tar.gz` and `vertex-ros2-humble-<tag>-amd64.tar.gz`:
+  the colcon install space (`vertex_ros2_msgs`, `vertex_ros2`, `vertex_fleet`)
+  for that distribution, with `libtashi-vertex.so` copied next to the binaries
+  so the `$ORIGIN`-relative rpath resolves. Extract into a workspace and
+  `source install/setup.bash`; no build required
 - release notes recording the exact `tashi-vertex` version and
-  `tashi-vertex-c` version the artifacts were built against
+  `tashi-vertex-c` version the artifacts were built against (shared by both
+  tarballs: the pin lives in the tree, not in the distribution)
+
+One version covers both distributions. The consumer-facing API (messages, node
+behaviour, `vertex_fleet`) is identical on Jazzy and Humble; only the ROS
+runtime underneath differs.
 
 ## The version pinning chain
 
@@ -56,8 +62,9 @@ automatically.
    `vertex_ros2/package.xml` + `Cargo.toml`, `vertex_core/Cargo.toml`, and
    `vertex_fleet/package.xml` + `setup.py`. Build once so the `Cargo.lock`
    files pick up the new versions, and commit the locks with the change.
-2. Run the full suite: `docker compose run --rm test` and
-   `docker compose run --rm sim simtest` must both pass.
+2. Run the full suite on both distributions: `docker compose run --rm test` and
+   `docker compose run --rm sim simtest` must pass as is (Jazzy) and with
+   `-f docker-compose.yml -f docker-compose.humble.yml` in front of `run` (Humble).
 3. Tag and push (any `v*` tag triggers the workflow):
 
 ```bash
@@ -65,8 +72,30 @@ git tag -a vX.Y.Z -m "vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-4. The `release` workflow does the rest. Check the run, then sanity-check the
-   published artifact list on the GitHub Release.
+4. The `release` workflow does the rest: one `build` leg per distribution,
+   then a single `publish` step. Check the run, then sanity-check the published
+   artifact list on the GitHub Release (one tarball per distribution).
+
+If one leg fails, use "Re-run failed jobs": the workflow reuses the artifact
+from the leg that passed, treats an already-created release as the target, and
+uploads with `--clobber`, so a partial run never needs the tag re-pushed.
+
+## Adding a distribution to an existing release
+
+A release whose tag predates support for a distribution cannot be rebuilt from
+the tag for it. For that case the `release` workflow has a manual trigger that
+builds the chosen distribution(s) from a branch and attaches the tarball(s) to
+the named release:
+
+```bash
+gh workflow run release.yml --ref main -f release_tag=v0.1.0 -f distros=humble
+```
+
+The dispatched run validates the full suite for the chosen distribution, uploads
+`vertex-ros2-<distro>-<tag>-amd64.tar.gz` to the existing release, and appends
+a section to its notes naming the commit the tarball was built from, since that
+is not the tag's tree. Existing assets and notes are left as they were. This is
+how the Humble tarball joined `v0.1.0`.
 
 ## Upgrading the engine
 
@@ -100,7 +129,7 @@ channel is gated on this repo going public, and nothing else.
 | Channel | Verdict | Notes |
 |---|---|---|
 | **GitHub Releases with install-space tarballs** | **adopted (this document)** | works today with existing repo access control, zero new infrastructure, covers the "run it without building it" case. amd64 only for now; an arm64 job needs an arm runner (`ubuntu-24.04-arm`) |
-| **Container image** (`ghcr.io`, private) | good next step | the Jazzy harness image plus a baked install space gives a runnable `vertex_node` in one pull; natural for fleet deployments already using containers. Adds registry auth management |
+| **Container image** (`ghcr.io`, private) | good next step | the harness image (Jazzy or Humble) plus a baked install space gives a runnable `vertex_node` in one pull; natural for fleet deployments already using containers. Adds registry auth management |
 | **bloom / apt (rosdistro)** | not viable while private | bloom releases route through the public rosdistro index. A self-hosted private apt repo is possible but is real infrastructure for little gain over tarballs at current consumer count |
 | **crates.io for `vertex_core`** | unblocked, gated on this repo going public | the old blocker was the `tashi-vertex` path dependency, which crates.io forbids. That is now an exact version requirement from the registry, so `vertex_core` is publishable as soon as the repo is public. Worth doing when the first non-ROS Rust consumer shows up |
 | **git dependency for `vertex_core`** | works today | a consumer Cargo project can depend on `vertex_core` by git URL as-is. The path dependency that used to make this need a local `[patch]` is gone |

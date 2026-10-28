@@ -233,7 +233,7 @@
   <h1>Vertex consensus for ROS&nbsp;2: concepts and protocol design</h1>
   <p class="lede">This volume builds the mental model and the design skill: what the Tashi Vertex engine actually guarantees, how leaderless fleet coordination falls out of one ordered log, and how to design a correct application protocol before writing code. I use tessera's four-robot route-exploration simulation as the worked example. For implementation you then build on the <code>vertex_fleet</code> library, which is Volume&nbsp;2; this volume shows the library's concepts and, where useful, what it does underneath.</p>
   <div class="series"><b>The series.</b> 1&nbsp;·&nbsp;Concepts and protocol design (you are here) &nbsp;→&nbsp; 2&nbsp;·&nbsp;<a href="fleet-api.html">The fleet API</a> (build your integration) &nbsp;→&nbsp; 3&nbsp;·&nbsp;<a href="crate-level.html">Crate-level internals</a> (non-ROS embeddings and adapters) &nbsp;·&nbsp; 4&nbsp;·&nbsp;<a href="porting.html">Porting a broker-based fleet</a> (arriving with an MQTT-coordinated fleet) &nbsp;·&nbsp; 5&nbsp;·&nbsp;<a href="mixed-fleet.html">Mixed fleets</a> (a peer that is not a ROS&nbsp;2 node). In a hurry? Start with Volume&nbsp;2 and return here when you design your own protocol.</div>
-  <p class="kicker">You need: ROS 2 Jazzy (or the tessera Docker harness), Rust, and access to the <code>tessera</code> repository.</p>
+  <p class="kicker">You need: ROS 2 Jazzy or Humble (or the tessera Docker harness), Rust, and access to the <code>tessera</code> repository.</p>
 </header>
 
 <h2 id="model">The mental model: one ordered log, everywhere</h2>
@@ -295,14 +295,14 @@
 mkdir consensus-fleet &amp;&amp; cd consensus-fleet
 git clone git@github.com:tashigit/tessera.git
 </pre></div>
-<p>The fastest path to a working build is tessera's Docker harness. It gives you ROS 2 Jazzy, the ros2-rust toolchain, and cached colcon builds without touching your host:</p>
+<p>The fastest path to a working build is tessera's Docker harness. It gives you ROS 2 (Jazzy by default; add <code>-f docker-compose.yml -f docker-compose.humble.yml</code> to every command for Humble), the ros2-rust toolchain, and cached colcon builds without touching your host:</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 cd tessera
-docker compose build            <span class="c"># build the Jazzy environment image (once)</span>
+docker compose build            <span class="c"># build the environment image (once)</span>
 docker compose run --rm build   <span class="c"># colcon build vertex_ros2 inside the container</span>
 docker compose run --rm shell   <span class="c"># interactive shell with the env sourced</span>
 </pre></div>
-<p>On a native ROS 2 Jazzy install, build with colcon from a workspace that contains the checkout under <code>src/</code>:</p>
+<p>On a native ROS 2 install (Jazzy or Humble), build with colcon from a workspace that contains the checkout under <code>src/</code>:</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 colcon build --packages-up-to vertex_ros2 --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash

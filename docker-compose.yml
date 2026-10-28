@@ -1,8 +1,13 @@
-# tessera / vertex_ros2 — ROS 2 Jazzy build & test harness.
+# tessera / vertex_ros2 — ROS 2 build & test harness (Jazzy).
 #
 # Runs natively on Apple Silicon (the ros:jazzy base is multi-arch; Docker pulls
 # the arm64 image on an M-series Mac). The project source is bind-mounted, so
 # edit on the host and re-run without rebuilding the image.
+#
+# For ROS 2 Humble, layer docker-compose.humble.yml over this file; it swaps the
+# image, the build arg and the project name (so the caches stay separate) and
+# leaves everything else here as is:
+#   docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm test
 #
 # Usage (from the tessera repo root):
 #   docker compose build                 # build the environment image (once)

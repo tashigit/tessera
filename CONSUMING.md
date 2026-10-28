@@ -16,7 +16,7 @@ What you get:
 
 ## 1. Prerequisites
 
-- ROS 2 Jazzy (or use the Docker harness below and skip a native install)
+- ROS 2 Jazzy or Humble (or use the Docker harness below and skip a native install)
 - Rust (stable) and CMake, for building the engine bindings
 - Git access to `tashigit/tessera` (private, so an org membership or a
   read-scoped PAT). The `tashi-vertex` bindings come from crates.io and need
@@ -39,12 +39,13 @@ Your own packages go in `src/` next to it.
 The repos file on `main` tracks `main`. For a reproducible build, replace the
 `version:` field with a release tag. The engine versions are pinned by
 `vertex_core/Cargo.toml` and its lockfile, so the tag alone fixes the whole
-chain (see `RELEASING.md`). Releases also ship a prebuilt Jazzy install-space
-tarball if you want to skip building entirely.
+chain (see `RELEASING.md`). Releases also ship prebuilt install-space tarballs,
+one per distribution (`vertex-ros2-jazzy-*` and `vertex-ros2-humble-*`), if
+you want to skip building entirely.
 
 ## 3. Build
 
-Native (a sourced Jazzy environment):
+Native (a sourced Jazzy or Humble environment):
 
 ```bash
 colcon build --packages-up-to vertex_ros2 vertex_fleet \
@@ -58,6 +59,15 @@ Or the ready-made Docker harness (nothing on the host but Docker):
 cd src/tessera
 docker compose build
 docker compose run --rm build
+```
+
+The harness is Jazzy by default. For Humble, layer the override on every
+compose command (or `export COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml`
+once); it builds a separate image and keeps its own build caches:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.humble.yml build
+docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm build
 ```
 
 Two build notes:
