@@ -61,8 +61,9 @@ assertion in `route_exploration.launch_test.py`, plus
 ### 1.2 Simulator choice
 
 Webots R2025a. On Apple Silicon it runs **natively on the host** (there is no
-arm64 Linux build) while the ROS 2 / Vertex graph runs in the arm64 Jazzy
-container; the two meet over rosbridge's WebSocket. See
+arm64 Linux build) while the ROS 2 / Vertex graph runs in the arm64 ROS 2
+container (Jazzy by default, Humble with the compose override; the simulation
+is the same on both); the two meet over rosbridge's WebSocket. See
 `worlds/README.md` for the split architecture. The headless CI-facing test
 replaces Webots with `nodes/mock_robot.py`, so the consensus loop is asserted
 without any simulator.
@@ -399,6 +400,26 @@ the N1 exploration, N3 fault-injection, and N4 lifecycle-churn launch_tests:
 docker compose run --rm sim simtest
 ```
 
+### 8.1 ROS 2 Humble
+
+Every command in this section is the Jazzy harness (the default). The same
+simulations run unchanged on ROS 2 Humble: layer the Humble override over the
+compose file, and nothing else differs. Either spell it out on each command or
+export it once per shell:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm sim simtest
+# or, once per shell, then use the plain commands below:
+export COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml
+```
+
+The Humble image and its build caches are separate from the Jazzy ones
+(`tessera-ros2:humble`, `tessera-humble_*` volumes), so the two can be built
+side by side. They publish the same host ports, so only one live `sim` can run
+at a time. CI runs this headless suite on both distributions on every push.
+
+### 8.2 Soak, live and scripted runs
+
 Mission soak (N5, long-running):
 
 ```bash
@@ -434,9 +455,10 @@ python3 vertex_ros2/test/simulation/nodes/test_mission_fsm.py
 ```
 
 CI: the `sim-test` job in `.github/workflows/ci.yml` runs `sim simtest` on
-every push and pull request, and the nightly `soak` job also runs
-`sim simsoak` (5 min). The live Webots scenarios remain host-run (Webots has
-no arm64 Linux build for the container).
+every push and pull request, once per distribution (`sim-test (jazzy)` and
+`sim-test (humble)`), and the nightly `soak` job also runs `sim simsoak`
+(5 min) on both. The live Webots scenarios remain host-run (Webots has no
+arm64 Linux build for the container).
 
 ---
 

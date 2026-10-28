@@ -12,7 +12,8 @@
 #   * all three /vertex/event streams are byte-identical
 #   * clean shutdown
 #
-# Run in the Jazzy container:  docker compose run --rm test
+# Run in the ROS 2 container (Jazzy by default; layer docker-compose.humble.yml
+# over the compose file for Humble):  docker compose run --rm test
 # Prerequisite: vertex_ros2/test/fixtures/peers.json (gen_test_keys.sh).
 
 import json

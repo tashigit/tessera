@@ -5,7 +5,7 @@ together; see README.md).
 
 Same native-Webots + Docker-ROS split as the first two simulations, with one
 addition. Webots runs NATIVELY on the Mac and drives
-worlds/airground_arena.wbt; this launch runs everything else in the Jazzy
+worlds/airground_arena.wbt; this launch runs everything else in the ROS 2 (Jazzy or Humble)
 container. What is new is that only HALF the fleet is a ROS citizen:
 
   ground tier (tessera)

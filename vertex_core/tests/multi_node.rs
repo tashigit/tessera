@@ -3,7 +3,7 @@
 //! verified by **diffing the event streams of all peers byte-for-byte**.
 //!
 //! The full ROS-level version runs three `vertex_node` processes under
-//! `launch_test` (see `vertex_ros2/test/`, requires ROS 2 Jazzy). This test
+//! `launch_test` (see `vertex_ros2/test/`, requires ROS 2 Jazzy or Humble). This test
 //! proves the same guarantee where it actually lives — in consensus — by
 //! starting three **real** in-process Vertex engines networked over localhost
 //! UDP through three `Controller`s, with no ROS dependency, so it runs in plain

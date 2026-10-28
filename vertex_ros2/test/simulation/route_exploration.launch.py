@@ -3,7 +3,7 @@
 Docker-ROS split — see ../README.md §8 and worlds/README.md).
 
 Webots runs NATIVELY on the Mac (it has no arm64 Linux build); this launch runs
-everything else inside the Jazzy Docker container:
+everything else inside the ROS 2 Docker container (Jazzy or Humble):
 
   * rosbridge_server (WebSocket, port 9090) — the Mac-side waypoint_follower
     controllers connect here to exchange /robot_i/pose, /barrier, /drive.

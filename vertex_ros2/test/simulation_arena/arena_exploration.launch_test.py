@@ -26,7 +26,8 @@
 #     accepted on readmission -- both land, identically on every bot.
 #   * The 5 vertex_nodes deliver byte-identical /vertex/event streams.
 #
-# Run in the Jazzy container:  docker compose run --rm sim simtest
+# Run in the ROS 2 container (Jazzy by default; layer docker-compose.humble.yml
+# over the compose file for Humble):  docker compose run --rm sim simtest
 # (or:  launch_test vertex_ros2/test/simulation_arena/arena_exploration.launch_test.py)
 # Prerequisite: fixtures/peers5.json (fixtures/gen_peers5.sh).
 

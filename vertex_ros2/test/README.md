@@ -33,6 +33,13 @@ pip install psutil
 SOAK_SECONDS=600 launch_test src/vertex_ros2/test/soak.launch_test.py
 ```
 
+In the Docker harness the same three steps are `docker compose run --rm test`
+(keys, build, the three-peer test, plus the `vertex_fleet` suite) and
+`docker compose run --rm soak`. That is the Jazzy image; for Humble add
+`-f docker-compose.yml -f docker-compose.humble.yml` before `run`, or export
+`COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml` once. The tests
+are identical on both distributions and CI runs them on both.
+
 ## Notes
 
 - The three nodes are remapped into `/v0`, `/v1`, `/v2` namespaces so they

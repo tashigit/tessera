@@ -16,7 +16,8 @@
 #   * Route exclusivity: no snapshot ever shows two bots assigned one route.
 #   * The 4 vertex_nodes deliver byte-identical /vertex/event streams.
 #
-# Run in the Jazzy container:  docker compose run --rm sim simtest
+# Run in the ROS 2 container (Jazzy by default; layer docker-compose.humble.yml
+# over the compose file for Humble):  docker compose run --rm sim simtest
 # (or:  launch_test vertex_ros2/test/simulation/route_exploration.launch_test.py)
 # Prerequisite: fixtures/peers4.json (fixtures/gen_peers4.sh).
 

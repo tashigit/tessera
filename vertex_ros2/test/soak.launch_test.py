@@ -10,7 +10,7 @@
 # Long-running; not part of the default `colcon test`. Run explicitly:
 #     SOAK_SECONDS=600 launch_test src/vertex_ros2/test/soak.launch_test.py
 #
-# Requires ROS 2 (Jazzy) + psutil. Reuses test/fixtures/peers.json (first entry).
+# Requires ROS 2 (Jazzy or Humble) + psutil. Reuses test/fixtures/peers.json (first entry).
 
 import json
 import os

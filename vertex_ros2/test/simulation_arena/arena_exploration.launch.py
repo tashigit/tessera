@@ -5,7 +5,7 @@ simulation: five Pioneer 3-AT robots sweep the pioneer arena; see README.md).
 Same native-Webots + Docker-ROS split as route exploration: Webots runs
 NATIVELY on the Mac and drives worlds/pioneer_arena.wbt, whose
 pioneer_explorer controllers connect to rosbridge; this launch runs everything
-else inside the Jazzy container:
+else inside the ROS 2 container (Jazzy or Humble):
 
   * rosbridge_server (WebSocket, port 9090) — the Mac-side pioneer_explorer
     controllers exchange /robot_i/pose, /telemetry, /detection, /goto here.

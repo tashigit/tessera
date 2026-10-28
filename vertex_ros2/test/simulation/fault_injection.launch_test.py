@@ -19,7 +19,8 @@
 #     (3 of 4 nodes finalize: n=4 tolerates f=1);
 #   * survivors shut down cleanly (the victim's -SIGKILL is intentional).
 #
-# Run in the Jazzy container:  docker compose run --rm sim simtest
+# Run in the ROS 2 container (Jazzy by default; layer docker-compose.humble.yml
+# over the compose file for Humble):  docker compose run --rm sim simtest
 # Prerequisite: fixtures/peers4.json (fixtures/gen_peers4.sh).
 
 import json

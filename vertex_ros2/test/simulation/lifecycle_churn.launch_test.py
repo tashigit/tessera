@@ -23,7 +23,8 @@
 # was Inactive. Rejoining a running session is upstream scope (running-session rejoin); the
 # churned robot needs none of those events because it is already done.
 #
-# Run in the Jazzy container:  docker compose run --rm sim simtest
+# Run in the ROS 2 container (Jazzy by default; layer docker-compose.humble.yml
+# over the compose file for Humble):  docker compose run --rm sim simtest
 # Prerequisite: fixtures/peers4.json (fixtures/gen_peers4.sh).
 
 import json
