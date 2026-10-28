@@ -90,10 +90,12 @@ remain as last-resort backstops.
 The consensus-coordinated exploration (`../README.md` §3) runs as a split:
 Webots stays **native on the Mac** (it has no arm64 Linux build, so this keeps
 the GPU and avoids x86 emulation), and the ROS 2 / Vertex graph runs in the
-**arm64 Jazzy container**. They meet over rosbridge's WebSocket.
+**arm64 ROS 2 container** (Jazzy by default; Humble by layering
+`docker-compose.humble.yml` over the compose file, with no other change).
+They meet over rosbridge's WebSocket.
 
 ```
-  Mac (native Webots)                      Docker (arm64, ros:jazzy)
+  Mac (native Webots)                      Docker (arm64, ros:jazzy or ros:humble)
   ┌───────────────────────────┐           ┌──────────────────────────────────┐
   │ routes_4bot_ros2.wbt       │  ws:9090  │ rosbridge_server                  │
   │  robot_i: waypoint_follower├──────────►│   ├─ /robot_i/pose, /barrier  ───►│  mission_coordinator_i
@@ -139,6 +141,8 @@ python3 -m pip install --break-system-packages websocket-client
 # 1. container side: rosbridge + 4x vertex_node + 4x mission_coordinator
 #    (generates fixtures/peers4.json, colcon-builds vertex_ros2, then launches)
 docker compose run --rm --service-ports sim
+#    the same on ROS 2 Humble:
+#    docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm --service-ports sim
 
 # 2. host side: open the ROS 2 world in native Webots and press Play
 /Applications/Webots.app/Contents/MacOS/webots \
@@ -189,6 +193,7 @@ parallel, discovers the block, and still gets every bot to the end.
 
 ```bash
 docker compose run --rm sim simtest
+# ROS 2 Humble: docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm sim simtest
 ```
 
 Asserts (application layer of `../README.md` §7):

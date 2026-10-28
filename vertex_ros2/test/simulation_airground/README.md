@@ -98,7 +98,7 @@ Opaque JSON records on `VertexTransaction.payload` (all carry `epoch`;
 ## 2. The fleet
 
 ```
- Native Webots (Mac)                Docker / Jazzy               Native Rust
+ Native Webots (Mac)                Docker / ROS 2               Native Rust
  ───────────────────                ──────────────               ───────────
  pioneer_sweeper x2 ──rosbridge──▶  vertex_node x2
                         :9090       ground_coordinator x2
@@ -244,6 +244,18 @@ The fold itself has 29 pure-Python unit tests in
 docker compose run --rm sim simtest        # all three simulations' suites
 ```
 
+That is the Jazzy harness. The scenario runs unchanged on ROS 2 Humble (the
+drones never touch ROS, and the ground side uses nothing distro-specific); add
+the override to the same commands, headless and live alike, or export it once
+per shell:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm sim simtest
+# or: export COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml
+```
+
+CI runs this suite on both distributions on every push.
+
 Or, inside the container, just this scenario:
 
 ```bash
@@ -267,8 +279,9 @@ python3 nodes/smoke_air_committee.py
 ### 5.2 Live, in Webots (the viewable run)
 
 Same split as the other two scenarios: Webots runs natively on the Mac (no
-arm64 Linux build), the ROS 2 / Vertex graph runs in the Jazzy container, and
-the two meet over forwarded ports.
+arm64 Linux build), the ROS 2 / Vertex graph runs in the ROS 2 container
+(Jazzy, or Humble with the override above), and the two meet over forwarded
+ports.
 
 One-time host setup:
 

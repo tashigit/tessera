@@ -10,7 +10,7 @@
 #     identical (the real Vertex-order guarantee, design G4);
 #   * a deactivate -> activate cycle completes without crashing.
 #
-# Requires ROS 2 (Jazzy baseline) + a colcon-built workspace. Run with:
+# Requires ROS 2 (Jazzy or Humble) + a colcon-built workspace. Run with:
 #     colcon test --packages-select vertex_ros2
 #   or directly:
 #     launch_test src/vertex_ros2/test/system_three_peers.launch_test.py

@@ -494,6 +494,7 @@ node viewer/airground_fold.test.js         # the viewer's fold
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 docker compose run --rm sim simtest        # all three simulations
 </pre></div>
+<p>That is the Jazzy harness, the default. The same suite runs unchanged on ROS 2 Humble: add <code>-f docker-compose.yml -f docker-compose.humble.yml</code> before <code>run</code> on this and every compose command below, or export <code>COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml</code> once. CI runs the suite on both distributions.</p>
 
 <p>The air/ground portion runs both folds' unit tests, then three launch tests: the mixed fleet, a drone that invents hazards, and a drone that hides one. There is also an air-tier-only smoke test that needs neither ROS nor Docker, four real agents in a real committee over UDP, which is the fastest way to debug the Rust half:</p>
 

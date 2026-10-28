@@ -326,7 +326,7 @@
 <p>The <code>telemetry</code> topic carries per-stream sensor ages. The agent turns them into its health beacon, which is the live path from a dying camera to a fleet-wide, agreed, reversible verdict. Headless, <code>nodes/mock_pioneer.py</code> stands in for Webots with straight-line kinematics, a scripted sensor outage, and planted detections, so CI asserts the whole loop against real consensus with no simulator.</p>
 
 <h2 id="s6"><span class="stepno">Step 6</span>Run and verify</h2>
-<p>Headless, in the container (this is also part of <code>simtest</code>, which CI runs on every push):</p>
+<p>Headless, in the container (this is also part of <code>simtest</code>, which CI runs on every push, on Jazzy and on Humble). The commands below are the Jazzy harness; for Humble add <code>-f docker-compose.yml -f docker-compose.humble.yml</code> before <code>run</code>, or export <code>COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml</code> once. Nothing in the scenario changes.</p>
 <div class="code"><span class="lang">shell</span><button class="copy">Copy</button><pre>
 docker compose run --rm sim simtest
 <span class="c"># or, inside the container, just this scenario:</span>

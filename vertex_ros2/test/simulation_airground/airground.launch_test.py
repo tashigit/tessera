@@ -35,7 +35,8 @@
 #     mission_state by the Python fold).
 #   * The 2 vertex_nodes deliver byte-identical /vertex/event streams.
 #
-# Run in the Jazzy container:  docker compose run --rm sim simtest
+# Run in the ROS 2 container (Jazzy by default; layer docker-compose.humble.yml
+# over the compose file for Humble):  docker compose run --rm sim simtest
 # Prerequisites: fixtures/peers_airground.json (fixtures/gen_peers_airground.sh)
 #                and a built air_agent (cd air_agent && cargo build).
 

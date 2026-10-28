@@ -24,7 +24,8 @@
 # the second witness. Between the two, a single lying drone can neither invent
 # an obstacle nor hide one.
 #
-# Run in the Jazzy container:  docker compose run --rm sim simtest
+# Run in the ROS 2 container (Jazzy by default; layer docker-compose.humble.yml
+# over the compose file for Humble):  docker compose run --rm sim simtest
 # Prerequisites: fixtures/peers_airground.json and a built air_agent.
 
 import json

@@ -31,7 +31,8 @@
 #     condemned, or covered, but never silently left as unexamined ground.
 #   * Coverage completes and the fleet agrees.
 #
-# Run in the Jazzy container:  docker compose run --rm sim simtest
+# Run in the ROS 2 container (Jazzy by default; layer docker-compose.humble.yml
+# over the compose file for Humble):  docker compose run --rm sim simtest
 # Prerequisites: fixtures/peers_airground.json and a built air_agent.
 
 import json

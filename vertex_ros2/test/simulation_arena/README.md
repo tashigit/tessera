@@ -149,11 +149,23 @@ docker compose run --rm sim simtest        # both simulations' suites
 #   launch_test arena_exploration.launch_test.py
 ```
 
+That is the Jazzy harness. The scenario runs unchanged on ROS 2 Humble; add
+the override to the same commands (headless and live alike), or export it
+once per shell:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.humble.yml run --rm sim simtest
+# or: export COMPOSE_FILE=docker-compose.yml:docker-compose.humble.yml
+```
+
+CI runs this suite on both distributions on every push.
+
 ### 5.2 Live, in Webots (the viewable run)
 
 Same split as the route scenario: Webots runs natively on the Mac (no arm64
-Linux build), the ROS 2 / Vertex graph runs in the Jazzy container, and the
-two meet over rosbridge's WebSocket on port 9090.
+Linux build), the ROS 2 / Vertex graph runs in the ROS 2 container (Jazzy, or
+Humble with the override above), and the two meet over rosbridge's WebSocket
+on port 9090.
 
 One-time host setup:
 
