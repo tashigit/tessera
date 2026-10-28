@@ -41,7 +41,7 @@ exposes it through the `/vertex/transition` service (verbs `configure`/`activate
 ## Build
 
 ```console
-# in a ROS 2 Jazzy workspace with ros2-rust set up (colcon-cargo + colcon-ros-cargo):
+# in a ROS 2 workspace (Jazzy or Humble) with ros2-rust set up (colcon-cargo + colcon-ros-cargo):
 #   pip install git+https://github.com/colcon/colcon-cargo.git \
 #               git+https://github.com/colcon/colcon-ros-cargo.git
 cd ~/ros2_ws/src && ln -s /path/to/tessera/vertex_ros2_msgs . \
@@ -87,7 +87,8 @@ ros2 service call /vertex/status vertex_ros2_msgs/srv/VertexStatus
 ## Note on the rclrs adapter
 
 All logic the test suite verifies lives in `vertex_core`. This crate is the thin
-`rclrs` adapter: it targets the rclrs/Jazzy API and is compiled by colcon. The
-`rclrs` symbol/QoS/callback specifics may need minor adjustment to the exact
-distribution you pin; the contract (topics, types, parameters, lifecycle verbs)
-is fixed.
+`rclrs` adapter: it targets the rclrs 0.8 API and is compiled by colcon against
+whichever ROS 2 distribution the workspace sources (Jazzy and Humble are both
+built and tested; rclrs picks its rcl bindings from `ROS_DISTRO` at build time
+and this crate uses none of the APIs it gates per distribution). The contract
+(topics, types, parameters, lifecycle verbs) is fixed.

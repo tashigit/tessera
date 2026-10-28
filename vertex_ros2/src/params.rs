@@ -2,7 +2,7 @@
 //! [`vertex_core::Config`].
 //!
 //! NOTE: this module is part of the ROS binding layer and is built by colcon
-//! against `rclrs` (Jazzy baseline). The parameter *names, types, defaults, and
+//! against `rclrs` (Jazzy and Humble). The parameter *names, types, defaults, and
 //! the mapping onto Vertex* are the contract; the `rclrs` parameter-declaration
 //! calls follow the ros2-rust API for the pinned distribution.
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Entrypoint for the tessera ROS 2 Jazzy image.
+# Entrypoint for the tessera ROS 2 image (Jazzy or Humble; the image's
+# ROS_DISTRO decides, see docker/Dockerfile).
 #
 # Sources the base ROS install + the ros2-rust overlay, then dispatches on the
 # first argument:
@@ -16,9 +17,12 @@
 set -euo pipefail
 
 # ROS setup scripts reference unset variables (AMENT_TRACE_SETUP_FILES, ...) and
-# are not `set -u` safe, so disable nounset just while sourcing them.
+# are not `set -u` safe, so disable nounset just while sourcing them. ROS_DISTRO
+# comes from the base image's environment; the `:?` keeps a missing value a
+# hard error even with nounset off. rclrs reads the same variable when cargo
+# builds it, so nothing here (or in docker-compose.yml) may override it.
 set +u
-source /opt/ros/jazzy/setup.bash
+source "/opt/ros/${ROS_DISTRO:?ROS_DISTRO is not set in the image environment}/setup.bash"
 source /opt/ros2_rust/install/setup.bash
 set -u
 
@@ -29,6 +33,9 @@ set -u
 # on the same Docker network shares ROS_DOMAIN_ID 0 and its nodes collide with
 # ours (duplicate transition services, drive-topic fights) — which manifests as
 # "activate not valid from state Active" and bots that never move.
+# ROS_AUTOMATIC_DISCOVERY_RANGE is the Iron+ mechanism and is ignored by Humble,
+# where ROS_LOCALHOST_ONLY alone does the job; both are exported so one script
+# serves both images.
 export ROS_LOCALHOST_ONLY=1
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 

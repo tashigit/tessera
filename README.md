@@ -39,7 +39,7 @@ library on top, the workspace is four packages:
 |---|---|---|---|
 | **`vertex_ros2_msgs`** | `ament_cmake` | `.msg`/`.srv` contract (§4.5) | colcon |
 | **`vertex_core`** | plain `cargo` | All ROS-agnostic logic: lifecycle state machine, the Tokio↔channel bridge, the engine task, config parsing, Vertex→record conversion | **`cargo test` (runs here)** |
-| **`vertex_ros2`** | `ament_cargo` | The thin `rclrs` node (`vertex_node`): pub/sub/services/params/diagnostics that map `vertex_core` onto ROS | colcon (ROS 2 Jazzy) |
+| **`vertex_ros2`** | `ament_cargo` | The thin `rclrs` node (`vertex_node`): pub/sub/services/params/diagnostics that map `vertex_core` onto ROS | colcon (ROS 2 Jazzy or Humble) |
 | **`vertex_fleet`** | `ament_python` | The application library: the `ReplicatedState` fold, the `VertexAgent` base node, and the ledger example | python unit tests + the `ledger_demo` launch_test |
 
 ```
@@ -87,8 +87,9 @@ test result: ok. 1 passed; 0 failed    # tx_saturation (backpressure accounting)
 ```
 
 The **ROS-level** equivalents (3 `vertex_node` processes, no-publish-in-Inactive,
-10-min soak) live in `vertex_ros2/test/` as `launch_test`s for CI on Jazzy
-(`docker/` + `docker-compose.yml` run them on any machine, incl. Apple Silicon).
+10-min soak) live in `vertex_ros2/test/` as `launch_test`s for CI on Jazzy and
+Humble (`docker/` + `docker-compose.yml` run them on any machine, incl. Apple
+Silicon; `docker-compose.humble.yml` layered on top selects Humble).
 The application layer on top is covered by the three simulation suites
 (`vertex_ros2/test/simulation*/`), which CI also runs headless on every push.
 
@@ -99,7 +100,7 @@ property Miri was meant to back (no double-send/double-free of tx buffers) is
 instead guaranteed **statically**: `Transaction` is move-only and `mem::forget`'d
 on send, so it cannot be double-freed or sent twice from safe Rust.
 
-**Requires a ROS 2 Jazzy workspace** (built by colcon, *not* by the local `cargo`):
+**Requires a ROS 2 workspace, Jazzy or Humble** (built by colcon, *not* by the local `cargo`):
 the `vertex_ros2` node crate (`rclrs` + generated messages). See
 [`vertex_ros2/README.md`](vertex_ros2/README.md) for the colcon build and a
 bring-up walkthrough.
