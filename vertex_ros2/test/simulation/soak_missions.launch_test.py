@@ -145,6 +145,11 @@ class TestSoakMissions(unittest.TestCase):
         blocked_pubs = [self.node.create_publisher(
             String, f"/robot_{i}/blocked_routes", 10) for i in range(4)]
 
+        # ReadyToTest does not guarantee the processes have started: on Humble
+        # the test body runs before launch delivers the process-start events,
+        # so proc_info has no entry yet for the vertex actions. Wait for them.
+        for a in vertex_actions:
+            proc_info.assertWaitForStartup(process=a, timeout=15)
         procs = [psutil.Process(proc_info[a].pid) for a in vertex_actions]
         baseline_mb = None
 
