@@ -280,9 +280,8 @@ dependencies = [
 
 [[package]]
 name = "tashi-vertex"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "722c1196d1374d3f66a730a8423ebab4b1cef32c910edd39e467ce29c461ae28"
+version = "0.16.0-rc3"
+source = "git+https://github.com/tashigit/tashi-vertex-rs?rev=e44f95d3a1f4dc5d3551d910aced47702c541964#e44f95d3a1f4dc5d3551d910aced47702c541964"
 dependencies = [
  "anyhow",
  "cmake",
@@ -359,7 +358,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "vertex_core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "arc-swap",
