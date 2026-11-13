@@ -8,7 +8,7 @@
     VertexTransaction, VertexEvent, VertexSyncPoint, and the VertexStatus service.
   </description>
   <maintainer email="yeousunn@tashi.network">Tashi</maintainer>
-  <license>Apache-2.0</license>
+  <license>BUSL-1.1</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>

@@ -9,7 +9,7 @@
     consensus stream on /vertex/event.
   </description>
   <maintainer email="yeousunn@tashi.network">Tashi</maintainer>
-  <license>Apache-2.0</license>
+  <license>BUSL-1.1</license>
 
   <buildtool_depend>ament_cargo</buildtool_depend>
 
