@@ -24,11 +24,11 @@ name: vertex_ros2 CI
 # humble leg, nothing is added for jazzy).
 #
 # This repo is the only checkout needed: `vertex_core` pins `tashi-vertex` to
-# `=0.14.0` from crates.io, and that crate's build script downloads the
+# `=0.16.0-rc3` from crates.io, and that crate's build script downloads the
 # matching tashi-vertex-c release. No sibling, no PAT.
 #
 # Runner arch: `ubuntu-latest` is amd64; the local validation was arm64 (Apple
-# Silicon). Both work — the v0.14.0 tashi-vertex-c release ships both
+# Silicon). Both work — the v0.16.0-rc3 tashi-vertex-c release ships both
 # `libtashi-vertex.so` (x86_64) and `libtashi-vertex-arm64.so`, and CMake picks
 # the right one. To run CI on arm64 instead, set `runs-on: ubuntu-24.04-arm`.
 
