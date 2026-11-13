@@ -299,6 +299,55 @@ fn build_options(node: &Node) -> Result<VertexOptions, ParamError> {
         .map_err(|_| ParamError::Missing("options.enable_hole_punching"))?
         .get();
 
+    // -1 means "unset" (the engine's previous behaviour).
+    let max_event_transaction_bytes = {
+        let v = node
+            .declare_parameter("options.max_event_transaction_bytes")
+            .default(-1)
+            .mandatory()
+            .map_err(|_| ParamError::Missing("options.max_event_transaction_bytes"))?
+            .get();
+        if v < 0 { None } else { Some(to_u64("options.max_event_transaction_bytes", v)?) }
+    };
+    // -1 means "unset" (the engine's previous behaviour).
+    let no_quorum_event_interval_ms = {
+        let v = node
+            .declare_parameter("options.no_quorum_event_interval_ms")
+            .default(-1)
+            .mandatory()
+            .map_err(|_| ParamError::Missing("options.no_quorum_event_interval_ms"))?
+            .get();
+        if v < 0 { None } else { Some(to_u64("options.no_quorum_event_interval_ms", v)?) }
+    };
+    // -1 means "unset" (the engine's previous behaviour).
+    let quiet_source_relay_ms = {
+        let v = node
+            .declare_parameter("options.quiet_source_relay_ms")
+            .default(-1)
+            .mandatory()
+            .map_err(|_| ParamError::Missing("options.quiet_source_relay_ms"))?
+            .get();
+        if v < 0 { None } else { Some(to_u64("options.quiet_source_relay_ms", v)?) }
+    };
+    // -1 means "unset" (the engine's previous behaviour).
+    let no_quorum_transaction_ttl_ms = {
+        let v = node
+            .declare_parameter("options.no_quorum_transaction_ttl_ms")
+            .default(-1)
+            .mandatory()
+            .map_err(|_| ParamError::Missing("options.no_quorum_transaction_ttl_ms"))?
+            .get();
+        if v < 0 { None } else { Some(to_u64("options.no_quorum_transaction_ttl_ms", v)?) }
+    };
+    let max_connect_backoff_ms = to_u64(
+        "options.max_connect_backoff_ms",
+        node.declare_parameter("options.max_connect_backoff_ms")
+            .default(d.max_connect_backoff_ms as i64)
+            .mandatory()
+            .map_err(|_| ParamError::Missing("options.max_connect_backoff_ms"))?
+            .get(),
+    )?;
+
     Ok(VertexOptions {
         base_min_event_interval_us,
         report_gossip_events,
@@ -315,5 +364,10 @@ fn build_options(node: &Node) -> Result<VertexOptions, ParamError> {
         enable_state_sharing,
         epoch_states_to_cache,
         enable_hole_punching,
+        max_event_transaction_bytes,
+        no_quorum_event_interval_ms,
+        quiet_source_relay_ms,
+        no_quorum_transaction_ttl_ms,
+        max_connect_backoff_ms,
     })
 }

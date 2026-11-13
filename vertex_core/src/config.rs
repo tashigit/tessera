@@ -38,6 +38,14 @@ pub struct VertexOptions {
     pub enable_state_sharing: bool,
     pub epoch_states_to_cache: u16,
     pub enable_hole_punching: bool,
+    /// Narrow-link options (Vertex 0.16). `None` (or the 30 s backoff) keeps the
+    /// engine's previous behaviour; set them for radio meshes of a few hundred
+    /// kbit/s where outages last minutes.
+    pub max_event_transaction_bytes: Option<u64>,
+    pub no_quorum_event_interval_ms: Option<u64>,
+    pub quiet_source_relay_ms: Option<u64>,
+    pub no_quorum_transaction_ttl_ms: Option<u64>,
+    pub max_connect_backoff_ms: u64,
 }
 
 impl Default for VertexOptions {
@@ -59,6 +67,11 @@ impl Default for VertexOptions {
             enable_state_sharing: false,
             epoch_states_to_cache: 3,
             enable_hole_punching: true,
+            max_event_transaction_bytes: None,
+            no_quorum_event_interval_ms: None,
+            quiet_source_relay_ms: None,
+            no_quorum_transaction_ttl_ms: None,
+            max_connect_backoff_ms: 30_000,
         }
     }
 }
@@ -86,6 +99,11 @@ impl VertexOptions {
         o.set_enable_state_sharing(self.enable_state_sharing);
         o.set_epoch_states_to_cache(self.epoch_states_to_cache);
         o.set_enable_hole_punching(self.enable_hole_punching);
+        o.set_max_event_transaction_bytes(self.max_event_transaction_bytes);
+        o.set_no_quorum_event_interval_ms(self.no_quorum_event_interval_ms);
+        o.set_quiet_source_relay_ms(self.quiet_source_relay_ms);
+        o.set_no_quorum_transaction_ttl_ms(self.no_quorum_transaction_ttl_ms);
+        o.set_max_connect_backoff_ms(self.max_connect_backoff_ms);
         o
     }
 }
