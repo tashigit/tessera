@@ -3,7 +3,7 @@ name = "vertex_core"
 version = "0.1.1"
 edition = "2021"
 description = "ROS-agnostic core of the Vertex/ROS 2 integration: lifecycle, the Tokio<->channel bridge, the engine task, and Vertex->message conversion. Verified by `cargo test` with no ROS install."
-license = "Apache-2.0"
+license = "BUSL-1.1"
 
 [dependencies]
 tashi-vertex = "=0.14.0"

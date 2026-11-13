@@ -17,7 +17,7 @@ setup(
     maintainer_email="yeousunn@tashi.network",
     description="Consensus-coordinated agent library on the Tashi Vertex "
                 "integration (vertex_ros2).",
-    license="Apache-2.0",
+    license="BUSL-1.1",
     entry_points={
         "console_scripts": [
             "ledger_agent = vertex_fleet.examples.ledger_agent:main",

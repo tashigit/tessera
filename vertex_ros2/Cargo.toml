@@ -3,7 +3,7 @@ name = "vertex_ros2"
 version = "0.1.1"
 edition = "2021"
 description = "ROS 2 node (vertex_node) exposing Tashi Vertex consensus on /vertex/tx, /vertex/event, /vertex/sync_point, /vertex/status and /diagnostics."
-license = "Apache-2.0"
+license = "BUSL-1.1"
 
 # Built by colcon (ament_cargo) inside a ROS 2 workspace. `rclrs` and the
 # generated message crates are provided by colcon-ros-cargo from the workspace

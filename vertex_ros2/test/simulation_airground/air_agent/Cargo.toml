@@ -3,7 +3,7 @@ name = "air_agent"
 version = "0.1.0"
 edition = "2021"
 description = "Drone-side Vertex agent for the air/ground simulation: joins the same consensus committee as tessera's vertex_node, but links tashi-vertex directly with no ROS anywhere."
-license = "Apache-2.0"
+license = "BUSL-1.1"
 
 [[bin]]
 name = "air_agent"

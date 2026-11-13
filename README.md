@@ -167,4 +167,6 @@ These can't be fully closed inside this repo; each is small (design §9).
 
 ## License
 
-Apache-2.0.
+Tessera is licensed under the **Business Source License 1.1** ([`LICENSE`](./LICENSE)). You can use, modify and redistribute the source for non-production purposes such as development, testing and evaluation. Production use requires a commercial license from Tashi Network (https://tashi.network). Each version converts to the Apache License, Version 2.0 four years after it is published.
+
+Versions up to and including 0.1.1 were released under the Apache License, Version 2.0, and stay available under that license.
