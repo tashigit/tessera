@@ -162,7 +162,7 @@ jobs:
             # same name under every cargo build directory layout.
             log=$(find /ws/build/vertex_ros2 -name tashi_vertex-urlinfo.txt | head -n1)
             [ -n "$log" ] || { echo "tashi_vertex-urlinfo.txt not found under /ws/build/vertex_ros2"; exit 1; }
-            ver=$(sed -n "s#.*tashi-vertex-c/releases/download/v\([0-9.]*\)/.*#\1#p" "$log" | head -n1)
+            ver=$(sed -n "s#.*tashi-vertex-c/releases/download/v\([0-9][0-9A-Za-z.+-]*\)/.*#\1#p" "$log" | head -n1)
             [ -n "$ver" ] || { echo "engine version not found in $log"; exit 1; }
             echo "$ver" > /ws/src/tessera/out/engine_version.txt
           '
