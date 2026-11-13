@@ -83,6 +83,11 @@ ros2 service call /vertex/status vertex_ros2_msgs/srv/VertexStatus
 | `bridge.event_channel_capacity` | int | 4096 | Vertex→ROS bound |
 | `diagnostics.period_s` | double | 1.0 | `/diagnostics` publish period |
 | `options.*` | various | Vertex defaults | One per `tashi_vertex::Options` setter (heartbeat, ack latencies, epoch sizing, hole-punching, …) |
+| `options.max_event_transaction_bytes` | int | `-1` (no cap) | Most bytes of application data in one event. Keeps a node that returns from a long outage from sending its whole backlog in one event a narrow link cannot carry. A few kB suits a radio mesh |
+| `options.no_quorum_event_interval_ms` | int (ms) | `-1` (never slow) | Event interval while no quorum is reachable (one side of a partition), so the sides do not pile up events that must all cross the link at heal |
+| `options.quiet_source_relay_ms` | int (ms) | `-1` (keep the limit) | After a creator has sent nothing new for this long, relay its events to every peer that asks, so a node lost mid-send does not stall the others |
+| `options.no_quorum_transaction_ttl_ms` | int (ms) | `-1` (keep all) | While no quorum is reachable, hold application transactions and drop those older than this (also on reclaim after a fallen-behind reset). For periodic status only: leave unset if you send commands that must not be dropped |
+| `options.max_connect_backoff_ms` | int (ms) | `30000` | Longest wait between dials to an unreachable peer. About 1000 reconnects quickly after an outage at little cost |
 
 ## Note on the rclrs adapter
 

@@ -38,6 +38,14 @@ pub struct VertexOptions {
     pub enable_state_sharing: bool,
     pub epoch_states_to_cache: u16,
     pub enable_hole_punching: bool,
+    /// Narrow-link options (Vertex 0.16). `None` (or the 30 s backoff) keeps the
+    /// engine's previous behaviour; set them for radio meshes of a few hundred
+    /// kbit/s where outages last minutes.
+    pub max_event_transaction_bytes: Option<u64>,
+    pub no_quorum_event_interval_ms: Option<u64>,
+    pub quiet_source_relay_ms: Option<u64>,
+    pub no_quorum_transaction_ttl_ms: Option<u64>,
+    pub max_connect_backoff_ms: u64,
 }
 
 impl Default for VertexOptions {
@@ -59,6 +67,11 @@ impl Default for VertexOptions {
             enable_state_sharing: false,
             epoch_states_to_cache: 3,
             enable_hole_punching: true,
+            max_event_transaction_bytes: None,
+            no_quorum_event_interval_ms: None,
+            quiet_source_relay_ms: None,
+            no_quorum_transaction_ttl_ms: None,
+            max_connect_backoff_ms: 30_000,
         }
     }
 }
@@ -86,6 +99,11 @@ impl VertexOptions {
         o.set_enable_state_sharing(self.enable_state_sharing);
         o.set_epoch_states_to_cache(self.epoch_states_to_cache);
         o.set_enable_hole_punching(self.enable_hole_punching);
+        o.set_max_event_transaction_bytes(self.max_event_transaction_bytes);
+        o.set_no_quorum_event_interval_ms(self.no_quorum_event_interval_ms);
+        o.set_quiet_source_relay_ms(self.quiet_source_relay_ms);
+        o.set_no_quorum_transaction_ttl_ms(self.no_quorum_transaction_ttl_ms);
+        o.set_max_connect_backoff_ms(self.max_connect_backoff_ms);
         o
     }
 }
@@ -232,6 +250,33 @@ mod tests {
         assert_eq!(o.transaction_channel_size, 32);
         assert!(o.enable_dynamic_epoch_size);
         assert!(o.enable_hole_punching);
+        // Narrow-link options: unset, or the engine's own default.
+        assert_eq!(o.max_event_transaction_bytes, None);
+        assert_eq!(o.no_quorum_event_interval_ms, None);
+        assert_eq!(o.quiet_source_relay_ms, None);
+        assert_eq!(o.no_quorum_transaction_ttl_ms, None);
+        assert_eq!(o.max_connect_backoff_ms, 30_000);
+        let built = o.build();
+        assert_eq!(built.get_max_connect_backoff_ms(), 30_000);
+        assert_eq!(built.get_max_event_transaction_bytes(), None);
+    }
+
+    #[test]
+    fn narrow_link_options_reach_the_engine() {
+        let o = VertexOptions {
+            max_event_transaction_bytes: Some(4096),
+            no_quorum_event_interval_ms: Some(2000),
+            quiet_source_relay_ms: Some(500),
+            no_quorum_transaction_ttl_ms: Some(2000),
+            max_connect_backoff_ms: 1000,
+            ..VertexOptions::default()
+        };
+        let built = o.build();
+        assert_eq!(built.get_max_event_transaction_bytes(), Some(4096));
+        assert_eq!(built.get_no_quorum_event_interval_ms(), Some(2000));
+        assert_eq!(built.get_quiet_source_relay_ms(), Some(500));
+        assert_eq!(built.get_no_quorum_transaction_ttl_ms(), Some(2000));
+        assert_eq!(built.get_max_connect_backoff_ms(), 1000);
     }
 
     #[test]

@@ -142,7 +142,7 @@ the fleet. Routing it through rosbridge would work and would prove less.
 ### The one thing that must match
 
 Both tiers link the **same engine protocol version**. `air_agent/Cargo.toml`
-pins `tashi-vertex = "=0.14.0"`, the exact version `vertex_core` pins. A
+pins `tashi-vertex = "=0.16.0-rc3"`, the exact version `vertex_core` pins. A
 mismatch between the drone binaries and `vertex_node` is the single mistake
 that breaks the whole demonstration.
 

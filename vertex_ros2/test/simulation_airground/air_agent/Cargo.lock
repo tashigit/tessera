@@ -195,9 +195,9 @@ dependencies = [
 
 [[package]]
 name = "tashi-vertex"
-version = "0.14.0"
+version = "0.16.0-rc3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "722c1196d1374d3f66a730a8423ebab4b1cef32c910edd39e467ce29c461ae28"
+checksum = "5c5bdc5a04a0855ab609691785ed0e68ef1dc0ba94bdd05f7197e5274535362b"
 dependencies = [
  "anyhow",
  "cmake",
@@ -262,19 +262,3 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[patch.unused]]
-name = "rclrs"
-version = "0.8.0"
-
-[[patch.unused]]
-name = "rosidl_runtime_rs"
-version = "0.7.0"
-
-[[patch.unused]]
-name = "rust_pubsub"
-version = "0.5.0"
-
-[[patch.unused]]
-name = "vertex_ros2_msgs"
-version = "0.1.0"

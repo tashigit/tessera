@@ -51,6 +51,22 @@ fn to_u16(name: &str, v: i64) -> Result<u16, ParamError> {
     u16::try_from(v).map_err(|_| ParamError::Range(format!("`{name}` out of u16 range (got {v})")))
 }
 
+/// Declare an integer parameter where `-1` (the default) means unset, and
+/// return `None` for it or the value as `u64`.
+fn optional_u64(node: &Node, name: &'static str) -> Result<Option<u64>, ParamError> {
+    let v = node
+        .declare_parameter(name)
+        .default(-1)
+        .mandatory()
+        .map_err(|_| ParamError::Missing(name))?
+        .get();
+    if v < 0 {
+        Ok(None)
+    } else {
+        Ok(Some(to_u64(name, v)?))
+    }
+}
+
 /// Reject a secret-key file that is readable or writable beyond its owner.
 ///
 /// Mirrors the posture OpenSSH enforces on private keys: with any group/other
@@ -169,18 +185,8 @@ pub fn build_config(node: &Node) -> Result<Config, ParamError> {
 fn build_options(node: &Node) -> Result<VertexOptions, ParamError> {
     let d = VertexOptions::default();
 
-    // base_min_event_interval_us is optional (Option<u64>); -1 means "unset".
-    let base_min = node
-        .declare_parameter("options.base_min_event_interval_us")
-        .default(-1)
-        .mandatory()
-        .map_err(|_| ParamError::Missing("options.base_min_event_interval_us"))?
-        .get();
-    let base_min_event_interval_us = if base_min < 0 {
-        None
-    } else {
-        Some(to_u64("options.base_min_event_interval_us", base_min)?)
-    };
+    // -1 means "unset" (the engine default).
+    let base_min_event_interval_us = optional_u64(node, "options.base_min_event_interval_us")?;
 
     let report_gossip_events = node
         .declare_parameter("options.report_gossip_events")
@@ -299,6 +305,19 @@ fn build_options(node: &Node) -> Result<VertexOptions, ParamError> {
         .map_err(|_| ParamError::Missing("options.enable_hole_punching"))?
         .get();
 
+    let max_event_transaction_bytes = optional_u64(node, "options.max_event_transaction_bytes")?;
+    let no_quorum_event_interval_ms = optional_u64(node, "options.no_quorum_event_interval_ms")?;
+    let quiet_source_relay_ms = optional_u64(node, "options.quiet_source_relay_ms")?;
+    let no_quorum_transaction_ttl_ms = optional_u64(node, "options.no_quorum_transaction_ttl_ms")?;
+    let max_connect_backoff_ms = to_u64(
+        "options.max_connect_backoff_ms",
+        node.declare_parameter("options.max_connect_backoff_ms")
+            .default(d.max_connect_backoff_ms as i64)
+            .mandatory()
+            .map_err(|_| ParamError::Missing("options.max_connect_backoff_ms"))?
+            .get(),
+    )?;
+
     Ok(VertexOptions {
         base_min_event_interval_us,
         report_gossip_events,
@@ -315,5 +334,10 @@ fn build_options(node: &Node) -> Result<VertexOptions, ParamError> {
         enable_state_sharing,
         epoch_states_to_cache,
         enable_hole_punching,
+        max_event_transaction_bytes,
+        no_quorum_event_interval_ms,
+        quiet_source_relay_ms,
+        no_quorum_transaction_ttl_ms,
+        max_connect_backoff_ms,
     })
 }
