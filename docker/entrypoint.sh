@@ -71,8 +71,12 @@ build_ros() {
 # LD_LIBRARY_PATH; launched node processes inherit it.
 export_tv_libpath() {
   local so
-  so=$(find /ws/build /ws/install -name 'libtashi-vertex.so' 2>/dev/null | head -n1)
-  [ -z "$so" ] && so=$(find /ws -name 'libtashi-vertex.so' 2>/dev/null | head -n1)
+  # The crate build installs the library for this machine as out/lib/. The
+  # engine archive it unpacks under _deps/ holds a libtashi-vertex.so too, but
+  # that one is always the x86_64 build, so a search by name alone can land on
+  # a library the loader skips on arm64.
+  so=$(find /ws/build -path '*/out/lib/libtashi-vertex.so' 2>/dev/null | head -n1)
+  [ -z "$so" ] && so=$(find /ws/install -name 'libtashi-vertex.so' 2>/dev/null | head -n1)
   if [ -n "$so" ]; then
     export LD_LIBRARY_PATH="$(dirname "$so")${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     echo "==> libtashi-vertex.so: $(dirname "$so") (added to LD_LIBRARY_PATH)"

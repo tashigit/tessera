@@ -1,24 +1,26 @@
 name: release
 
 # Cut a versioned release: validate the full suite in the ROS 2 harness for
-# each supported distribution, then publish one GitHub Release carrying a
-# self-contained install-space tarball per distribution (vertex_ros2_msgs +
-# vertex_ros2 + vertex_fleet, with libtashi-vertex.so placed next to the
-# binaries so the $ORIGIN-relative rpath resolves without any environment
-# setup). See RELEASING.md for the procedure and the version pinning chain the
+# each supported distribution and CPU architecture, then publish one GitHub
+# Release carrying a self-contained install-space tarball per distribution and
+# architecture (vertex_ros2_msgs + vertex_ros2 + vertex_fleet, with
+# libtashi-vertex.so placed next to the binaries so the $ORIGIN-relative rpath
+# resolves without any environment setup). See RELEASING.md for the procedure and the version pinning chain the
 # release notes record.
 #
 # Two ways in:
-#   * push a `v*` tag: both distributions are built from the tag and published
-#     under a new release named after it (the normal path).
-#   * workflow_dispatch: build the chosen distribution(s) from the dispatched
-#     branch and add the tarball(s) to an EXISTING release named by
-#     `release_tag`. This is how a distribution is added to a release whose
-#     tag predates support for it; the release notes record the commit the
-#     added tarball was built from, since it is not the tag's tree.
+#   * push a `v*` tag: both distributions are built from the tag for amd64 and
+#     arm64 and published under a new release named after it (the normal path).
+#   * workflow_dispatch: build the chosen distribution(s) and architecture(s)
+#     and add the tarball(s) to an EXISTING release named by `release_tag`.
+#     The source is `source_ref` when given, otherwise the dispatched branch.
+#     This is how a distribution or an architecture is added to a release that
+#     was published without it; the release notes record the commit the added
+#     tarball was built from.
 #
-# `build` is a matrix over distributions and `publish` runs once after all of
-# them. Publishing is idempotent: an existing release is reused, assets are
+# `build` is a matrix over distributions and architectures, each leg on a
+# runner of its own architecture (nothing is cross-compiled or emulated), and
+# `publish` runs once after all of them. Publishing is idempotent: an existing release is reused, assets are
 # uploaded with --clobber, and a notes section is only appended once. So if one
 # leg fails, "Re-run failed jobs" rebuilds just that leg and publishes; the
 # other leg's artifact is kept by Actions.
@@ -37,6 +39,15 @@ on:
         type: choice
         options: [humble, jazzy, both]
         default: humble
+      arches:
+        description: "Which architecture(s) to build and attach"
+        type: choice
+        options: [amd64, arm64, both]
+        default: amd64
+      source_ref:
+        description: "Tag, branch or commit to build from (default: the dispatched branch)"
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -45,22 +56,48 @@ env:
   # The release this run publishes to: the pushed tag, or the one named by the
   # dispatch input.
   TAG: ${{ inputs.release_tag || github.ref_name }}
+  # The tree the tarballs are built from. Empty means the ref that triggered
+  # the run, which is what actions/checkout takes by default.
+  SOURCE_REF: ${{ inputs.source_ref }}
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # GitHub-hosted arm64 runners build and test the arm64 leg natively.
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         distro: ${{ fromJSON(inputs.distros == 'humble' && '["humble"]' || inputs.distros == 'jazzy' && '["jazzy"]' || '["jazzy","humble"]') }}
+        arch: ${{ fromJSON(inputs.arches == 'amd64' && '["amd64"]' || inputs.arches == 'arm64' && '["arm64"]' || '["amd64","arm64"]') }}
     env:
+      # amd64 keeps the bare distribution name as its cache scope, which is the
+      # scope the CI workflow fills, so the two workflows share that cache.
+      CACHE_SCOPE: ${{ matrix.arch == 'amd64' && matrix.distro || format('{0}-{1}', matrix.distro, matrix.arch) }}
       IMAGE: tessera-ros2:${{ matrix.distro }}
       COMPOSE_FILE: ${{ matrix.distro == 'jazzy' && 'docker-compose.yml' || 'docker-compose.yml:docker-compose.humble.yml' }}
     steps:
       - name: Checkout tessera
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.SOURCE_REF }}
           path: tessera
+
+      # A tree named by `source_ref` brings the harness it was tagged with,
+      # and a harness older than arm64 support cannot run the suite there. The
+      # packages are built from `source_ref`; the harness around them (docker/
+      # and the compose files) is taken from the dispatched ref.
+      - name: Checkout the harness
+        if: env.SOURCE_REF != ''
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Use the dispatched ref's harness
+        if: env.SOURCE_REF != ''
+        run: |
+          rm -rf tessera/docker
+          cp -r harness/docker tessera/docker
+          cp harness/docker-compose*.yml tessera/
 
       - name: Free disk space
         run: |
@@ -74,7 +111,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build the ${{ matrix.distro }} environment image (cached)
+      - name: Build the ${{ matrix.distro }} ${{ matrix.arch }} environment image (cached)
         uses: docker/build-push-action@v6
         with:
           context: tessera/docker
@@ -83,8 +120,8 @@ jobs:
             ROS_DISTRO=${{ matrix.distro }}
           tags: ${{ env.IMAGE }}
           load: true
-          cache-from: type=gha,scope=${{ matrix.distro }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.distro }}
+          cache-from: type=gha,scope=${{ env.CACHE_SCOPE }}
+          cache-to: type=gha,mode=max,scope=${{ env.CACHE_SCOPE }}
 
       - name: Validate (cargo tests + 3-peer + vertex_fleet suite)
         working-directory: tessera
@@ -98,19 +135,34 @@ jobs:
         working-directory: tessera
         env:
           DISTRO: ${{ matrix.distro }}
+          ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p out
-          docker compose run --rm -e TAG -e DISTRO test bash -c '
+          docker compose run --rm -e TAG -e DISTRO -e ARCH test bash -c '
             set -euo pipefail
-            so=$(find /ws/build -name libtashi-vertex.so | head -n1)
-            cp "$so" /ws/install/vertex_ros2/lib/vertex_ros2/   # $ORIGIN: next to vertex_node
-            tar -C /ws -czf "/ws/src/tessera/out/vertex-ros2-${DISTRO}-${TAG}-amd64.tar.gz" install
+            # The engine archive ships one library per architecture and the
+            # crate build installs the one for this machine as out/lib/. The
+            # unpacked archive under _deps/ also holds a libtashi-vertex.so,
+            # which is always the x86_64 build, so match the installed path.
+            so=$(find /ws/build -path "*/out/lib/libtashi-vertex.so" | head -n1)
+            [ -n "$so" ] || { echo "libtashi-vertex.so not found under /ws/build"; exit 1; }
+            bindir=/ws/install/vertex_ros2/lib/vertex_ros2
+            cp "$so" "$bindir/"   # $ORIGIN: next to vertex_node
+            # The bundled library must be built for the same machine as the
+            # binary that loads it.
+            machine() { readelf -h "$1" | sed -n "s/^ *Machine: *//p"; }
+            [ "$(machine "$bindir/libtashi-vertex.so")" = "$(machine "$bindir/vertex_node")" ] \
+              || { echo "libtashi-vertex.so is $(machine "$bindir/libtashi-vertex.so"), vertex_node is $(machine "$bindir/vertex_node")"; exit 1; }
+            tar -C /ws -czf "/ws/src/tessera/out/vertex-ros2-${DISTRO}-${TAG}-${ARCH}.tar.gz" install
             # The engine release the pinned crate actually downloaded, read
-            # back from the build script log that cargo keeps in the build
-            # volume (each `compose run` is a fresh container, so the cargo
-            # registry the crate was unpacked into is already gone here).
-            log=$(ls /ws/build/vertex_ros2/*/build/tashi-vertex-*/output | head -n1)
-            ver=$(sed -n "s#.*tashi-vertex-c/releases/download/v\([0-9.]*\)/.*#\1#p" "$log" | head -n1)
+            # back from the record CMake keeps of the archive it fetched. It
+            # sits in the build volume (each `compose run` is a fresh
+            # container, so the cargo registry the crate was unpacked into is
+            # already gone here) and, unlike the build script log, has the
+            # same name under every cargo build directory layout.
+            log=$(find /ws/build/vertex_ros2 -name tashi_vertex-urlinfo.txt | head -n1)
+            [ -n "$log" ] || { echo "tashi_vertex-urlinfo.txt not found under /ws/build/vertex_ros2"; exit 1; }
+            ver=$(sed -n "s#.*tashi-vertex-c/releases/download/v\([0-9][0-9A-Za-z.+-]*\)/.*#\1#p" "$log" | head -n1)
             [ -n "$ver" ] || { echo "engine version not found in $log"; exit 1; }
             echo "$ver" > /ws/src/tessera/out/engine_version.txt
           '
@@ -119,7 +171,7 @@ jobs:
       - name: Upload the install space as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vertex-ros2-${{ matrix.distro }}
+          name: vertex-ros2-${{ matrix.distro }}-${{ matrix.arch }}
           path: tessera/out/
           if-no-files-found: error
           overwrite: true
@@ -133,6 +185,7 @@ jobs:
       - name: Checkout tessera
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.SOURCE_REF }}
           path: tessera
 
       - name: Download the built install spaces
@@ -147,11 +200,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
-          SHA: ${{ github.sha }}
-          REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           ls -R ../artifacts
+
+          # The commit the tarballs were built from, and the commit the
+          # release tag points at (peeled, since release tags are annotated).
+          SRC_SHA=$(git rev-parse HEAD)
+          TAG_SHA=$(git ls-remote origin "refs/tags/$TAG^{}" | cut -f1)
+          [ -n "$TAG_SHA" ] || TAG_SHA=$(git ls-remote origin "refs/tags/$TAG" | cut -f1)
 
           # Every leg pins the same crate, so the engine versions must agree.
           if [ "$(cat ../artifacts/*/engine_version.txt | sort -u | wc -l)" -ne 1 ]; then
@@ -163,15 +220,34 @@ jobs:
           TV_VER=$(sed -n '/^name = "tashi-vertex"$/,/^version = /s/^version = "\(.*\)"/\1/p' \
             vertex_core/Cargo.lock | head -n1)
 
+          # The notes of a release that already exists. A tarball they
+          # already name gets no second section, so a re-run adds nothing twice.
+          : > body.md
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exists=1
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body > body.md
+          else
+            exists=0
+          fi
+
           # One notes section per tarball built in this run.
           : > sections.md
-          for tgz in ../artifacts/*/vertex-ros2-*-amd64.tar.gz; do
+          for tgz in ../artifacts/*/vertex-ros2-*.tar.gz; do
             name=$(basename "$tgz")
+            if grep -q -F "$name" body.md; then
+              echo "notes already mention $name; no new section for it"
+              continue
+            fi
             distro=$(echo "$name" | sed -n 's/^vertex-ros2-\([a-z]*\)-.*/\1/p')
             Distro=$(echo "$distro" | sed 's/./\U&/')
-            printf 'ROS 2 %s install space (amd64): `%s` — vertex_ros2_msgs, vertex_ros2, vertex_fleet, with libtashi-vertex.so bundled next to the binaries.\n' "$Distro" "$name" >> sections.md
+            arch=$(echo "$name" | sed -n 's/.*-\([a-z0-9]*\)\.tar\.gz$/\1/p')
+            printf 'ROS 2 %s install space (%s): `%s` — vertex_ros2_msgs, vertex_ros2, vertex_fleet, with libtashi-vertex.so bundled next to the binaries.\n' "$Distro" "$arch" "$name" >> sections.md
             if [ "$EVENT" = "workflow_dispatch" ]; then
-              printf 'Built from `%s` on `%s` (added after the tag; the tag'"'"'s tree predates this distribution).\n' "$SHA" "$REF" >> sections.md
+              if [ "$SRC_SHA" = "$TAG_SHA" ]; then
+                printf 'Built from the `%s` tag (`%s`) and added after the release was published.\n' "$TAG" "$SRC_SHA" >> sections.md
+              else
+                printf 'Built from `%s`, which is not the tree of the `%s` tag, and added after the release was published.\n' "$SRC_SHA" "$TAG" >> sections.md
+              fi
             fi
             printf '\n' >> sections.md
           done
@@ -181,19 +257,11 @@ jobs:
             printf -- '- tashi-vertex-c `v%s`\n' "$TV_C_VER"
           } > built_against.md
 
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if [ "$exists" = 1 ]; then
             echo "release $TAG exists; adding assets"
-            if [ "$EVENT" = "workflow_dispatch" ]; then
-              # Append the new sections to the existing notes, once: a re-run
-              # must not duplicate them.
-              gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body > body.md
-              first=$(ls ../artifacts/*/vertex-ros2-*-amd64.tar.gz | head -n1 | xargs basename)
-              if grep -q -F "$first" body.md; then
-                echo "notes already mention $first; leaving the body unchanged"
-              else
-                { printf '\n'; cat sections.md; cat built_against.md; } >> body.md
-                gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file body.md
-              fi
+            if [ "$EVENT" = "workflow_dispatch" ] && [ -s sections.md ]; then
+              { printf '\n'; cat sections.md; cat built_against.md; } >> body.md
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file body.md
             fi
           else
             {
@@ -208,4 +276,4 @@ jobs:
               --notes-file release_notes.md
           fi
           gh release upload --clobber "$TAG" --repo "$GITHUB_REPOSITORY" \
-            ../artifacts/*/vertex-ros2-*-amd64.tar.gz
+            ../artifacts/*/vertex-ros2-*.tar.gz
