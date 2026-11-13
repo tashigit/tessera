@@ -82,6 +82,23 @@ jobs:
           ref: ${{ env.SOURCE_REF }}
           path: tessera
 
+      # A tree named by `source_ref` brings the harness it was tagged with,
+      # and a harness older than arm64 support cannot run the suite there. The
+      # packages are built from `source_ref`; the harness around them (docker/
+      # and the compose files) is taken from the dispatched ref.
+      - name: Checkout the harness
+        if: env.SOURCE_REF != ''
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Use the dispatched ref's harness
+        if: env.SOURCE_REF != ''
+        run: |
+          rm -rf tessera/docker
+          cp -r harness/docker tessera/docker
+          cp harness/docker-compose*.yml tessera/
+
       - name: Free disk space
         run: |
           df -h /
@@ -141,7 +158,10 @@ jobs:
             # back from the build script log that cargo keeps in the build
             # volume (each `compose run` is a fresh container, so the cargo
             # registry the crate was unpacked into is already gone here).
-            log=$(ls /ws/build/vertex_ros2/*/build/tashi-vertex-*/output | head -n1)
+            # The crate directory is tashi-vertex-<hash>/ through cargo 1.99
+            # and tashi-vertex/<hash>/ from 1.100 on.
+            log=$(find /ws/build/vertex_ros2 -path "*/build/tashi-vertex*" -name output -type f | head -n1)
+            [ -n "$log" ] || { echo "tashi-vertex build script log not found"; exit 1; }
             ver=$(sed -n "s#.*tashi-vertex-c/releases/download/v\([0-9.]*\)/.*#\1#p" "$log" | head -n1)
             [ -n "$ver" ] || { echo "engine version not found in $log"; exit 1; }
             echo "$ver" > /ws/src/tessera/out/engine_version.txt

@@ -89,7 +89,9 @@ uploads with `--clobber`, so a partial run never needs the tag re-pushed.
 The `release` workflow has a manual trigger that builds the chosen
 distribution(s) and architecture(s) and attaches the tarball(s) to a release
 that already exists. `source_ref` names the tree to build; without it the run
-builds the dispatched branch.
+builds the dispatched branch. With it, the packages come from `source_ref` and
+the harness (`docker/` and the compose files) from the dispatched branch, so a
+fix to the harness reaches a tree that was tagged before it.
 
 An architecture the release was published without is built from the tag
 itself, as long as the tag's tree builds with the current workflow. This is
