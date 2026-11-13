@@ -250,6 +250,33 @@ mod tests {
         assert_eq!(o.transaction_channel_size, 32);
         assert!(o.enable_dynamic_epoch_size);
         assert!(o.enable_hole_punching);
+        // Narrow-link options: unset, or the engine's own default.
+        assert_eq!(o.max_event_transaction_bytes, None);
+        assert_eq!(o.no_quorum_event_interval_ms, None);
+        assert_eq!(o.quiet_source_relay_ms, None);
+        assert_eq!(o.no_quorum_transaction_ttl_ms, None);
+        assert_eq!(o.max_connect_backoff_ms, 30_000);
+        let built = o.build();
+        assert_eq!(built.get_max_connect_backoff_ms(), 30_000);
+        assert_eq!(built.get_max_event_transaction_bytes(), None);
+    }
+
+    #[test]
+    fn narrow_link_options_reach_the_engine() {
+        let o = VertexOptions {
+            max_event_transaction_bytes: Some(4096),
+            no_quorum_event_interval_ms: Some(2000),
+            quiet_source_relay_ms: Some(500),
+            no_quorum_transaction_ttl_ms: Some(2000),
+            max_connect_backoff_ms: 1000,
+            ..VertexOptions::default()
+        };
+        let built = o.build();
+        assert_eq!(built.get_max_event_transaction_bytes(), Some(4096));
+        assert_eq!(built.get_no_quorum_event_interval_ms(), Some(2000));
+        assert_eq!(built.get_quiet_source_relay_ms(), Some(500));
+        assert_eq!(built.get_no_quorum_transaction_ttl_ms(), Some(2000));
+        assert_eq!(built.get_max_connect_backoff_ms(), 1000);
     }
 
     #[test]
